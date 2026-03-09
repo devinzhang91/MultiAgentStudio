@@ -1,21 +1,22 @@
-/* OpenClaw TUI Studio - 全局样式 */
+/* OpenClaw TUI Studio - 平面设计风格 */
 
 /* 基础设置 */
 * {
-    transition: background 150ms linear;
+    transition: background 100ms linear;
 }
 
-/* 应用整体样式 */
+/* 应用整体 */
 Screen {
     background: $surface;
     color: $text;
 }
 
-/* 头部样式 */
+/* 头部 - 平面 */
 Header {
-    background: $primary-darken-2;
+    background: $primary-darken-3;
     color: $text;
     text-style: bold;
+    height: 3;
 }
 
 Header .header-title {
@@ -26,54 +27,50 @@ Header .header-clock {
     color: $text-muted;
 }
 
-/* 底部样式 */
+/* 底部 - 平面 */
 Footer {
-    background: $primary-darken-2;
+    background: $primary-darken-3;
+    height: 1;
 }
 
 Footer .footer-key {
-    background: $primary;
+    background: $primary-darken-2;
     color: $text;
+    text-style: bold;
 }
 
-/* 按钮样式 */
+/* 按钮 - 扁平化 */
 Button {
-    background: $primary;
+    background: $primary-darken-2;
     color: $text;
     border: none;
     text-style: bold;
     padding: 0 2;
+    height: 3;
 }
 
 Button:hover {
-    background: $primary-lighten-2;
+    background: $primary;
 }
 
 Button.primary {
-    background: $success;
+    background: $success-darken-1;
 }
 
 Button.primary:hover {
-    background: $success-lighten-2;
+    background: $success;
 }
 
-Button.error {
-    background: $error;
-}
-
-Button.error:hover {
-    background: $error-lighten-2;
-}
-
-/* 输入框样式 */
+/* 输入框 - 扁平 */
 Input {
-    background: $surface-darken-1;
-    border: solid $primary-darken-2;
+    background: $surface;
+    border: none;
     padding: 0 1;
+    height: 3;
 }
 
 Input:focus {
-    border: solid $primary;
+    background: $surface-lighten-1;
 }
 
 /* 静态文本 */
@@ -81,17 +78,21 @@ Static {
     content-align: left top;
 }
 
-/* 滚动区域 */
+/* 滚动日志 */
 RichLog {
-    background: $surface-darken-1;
-    border: solid $primary-darken-2;
-    padding: 1;
+    background: transparent;
+    border: none;
+    padding: 0;
 }
 
-/* 提示通知 */
+RichLog > .rich-log--lines {
+    padding: 0;
+}
+
+/* 通知提示 */
 Toast {
     border: solid $primary;
-    background: $surface-darken-1;
+    background: $surface;
 }
 
 Toast.toast-information {
@@ -104,17 +105,4 @@ Toast.toast-warning {
 
 Toast.toast-error {
     border: solid $error;
-}
-
-/* 响应式布局辅助 */
-.centered {
-    align: center middle;
-}
-
-.full-width {
-    width: 100%;
-}
-
-.full-height {
-    height: 100%;
 }

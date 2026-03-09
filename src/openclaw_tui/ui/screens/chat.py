@@ -1,4 +1,4 @@
-"""聊天屏幕"""
+"""聊天屏幕 - 平面风格"""
 from textual.screen import Screen
 from textual.widgets import Button, Static
 from textual.containers import Horizontal, Vertical
@@ -14,20 +14,23 @@ class ChatScreen(Screen):
         align: center middle;
     }
     ChatScreen .chat-container {
-        width: 80%;
-        height: 80%;
-        border: solid $primary;
-        background: $surface-darken-1;
+        width: 85%;
+        height: 85%;
+        border: solid $primary-darken-2;
+        background: $surface;
     }
-    ChatScreen .chat-header {
+    ChatScreen .chat-toolbar {
         height: 3;
-        background: $primary-darken-2;
-        content-align: center middle;
-        text-style: bold;
+        background: $primary-darken-3;
+        content-align: left middle;
+        padding: 0 1;
     }
     ChatScreen .back-btn {
         width: auto;
-        margin: 0 1;
+    }
+    ChatScreen .title-text {
+        text-style: bold;
+        margin-left: 2;
     }
     """
     
@@ -38,7 +41,6 @@ class ChatScreen(Screen):
     
     def get_employee_info(self, employee_id: str) -> dict:
         """获取员工信息"""
-        # TODO: 从状态管理器获取
         employees = {
             "alice-001": {"name": "Alice", "role": "代码审查专家"},
             "bob-002": {"name": "Bob", "role": "文档生成助手"},
@@ -51,9 +53,9 @@ class ChatScreen(Screen):
     def compose(self):
         """组装聊天界面"""
         with Vertical(classes="chat-container"):
-            with Horizontal(classes="chat-header"):
+            with Horizontal(classes="chat-toolbar"):
                 yield Button("← 返回", id="back-btn", classes="back-btn", variant="default")
-                yield Static(f"与 {self.employee['name']} 对话 - {self.employee['role']}", expand=True)
+                yield Static(f"🦞 与 {self.employee['name']} 对话 ({self.employee['role']})", classes="title-text")
             
             yield ChatPanel(
                 employee_id=self.employee_id,
@@ -68,4 +70,5 @@ class ChatScreen(Screen):
     def on_chat_message(self, message: str):
         """接收来自员工的消息"""
         chat_panel = self.query_one(ChatPanel)
+        chat_panel.show_typing(False)
         chat_panel.add_message(self.employee['name'], message, is_user=False)

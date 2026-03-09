@@ -1,67 +1,63 @@
-"""员工卡片组件"""
+"""员工卡片组件 - 平面设计风格"""
 from textual.widgets import Static, Button
 from textual.containers import Vertical, Horizontal
 from textual.reactive import reactive
+from rich.text import Text
+from rich.panel import Panel
 
 
 class EmployeeCard(Vertical):
-    """员工卡片 - 展示单个员工的信息和状态"""
+    """员工卡片 - 扁平化设计，使用emoji图标"""
     
     # 响应式属性
     name = reactive("")
     role = reactive("")
     status = reactive("idle")  # idle, working, offline
-    avatar = reactive("👤")
+    has_unread = reactive(False)
     current_task = reactive("")
     
     DEFAULT_CSS = """
     EmployeeCard {
-        width: 24;
-        height: auto;
-        border: solid $primary;
-        background: $surface-darken-1;
-        padding: 1;
-        margin: 1;
+        width: 28;
+        height: 12;
+        background: $surface;
+        border: solid $primary-darken-2;
+        padding: 0;
     }
     EmployeeCard:hover {
-        background: $surface-darken-2;
+        background: $surface-lighten-1;
+        border: solid $primary;
     }
-    EmployeeCard .avatar {
-        text-style: bold;
-        text-align: center;
-        width: 100%;
+    EmployeeCard .card-header {
+        height: 3;
+        background: $primary-darken-3;
+        content-align: center middle;
     }
-    EmployeeCard .name {
+    EmployeeCard .card-body {
+        height: 6;
+        padding: 0 1;
+        content-align: center middle;
+    }
+    EmployeeCard .card-footer {
+        height: 3;
+        content-align: center middle;
+    }
+    EmployeeCard .emoji-icon {
         text-style: bold;
-        text-align: center;
+    }
+    EmployeeCard .name-text {
+        text-style: bold;
         color: $text;
     }
-    EmployeeCard .role {
-        text-align: center;
+    EmployeeCard .role-text {
         color: $text-muted;
-        text-style: italic;
     }
-    EmployeeCard .status {
+    EmployeeCard .status-indicator {
         text-align: center;
-        margin: 1 0;
     }
-    EmployeeCard .status-idle {
-        color: $success;
-    }
-    EmployeeCard .status-working {
+    EmployeeCard .unread-badge {
         color: $warning;
-    }
-    EmployeeCard .status-offline {
-        color: $error;
-    }
-    EmployeeCard .task {
-        text-align: center;
-        color: $text-muted;
-        height: 1;
-    }
-    EmployeeCard .actions {
-        align: center middle;
-        margin-top: 1;
+        text-style: bold;
     }
     """
     
@@ -70,8 +66,8 @@ class EmployeeCard(Vertical):
         employee_id: str,
         name: str,
         role: str,
-        avatar: str = "👤",
         status: str = "idle",
+        has_unread: bool = False,
         current_task: str = "",
         **kwargs
     ):
@@ -79,67 +75,77 @@ class EmployeeCard(Vertical):
         self.employee_id = employee_id
         self.name = name
         self.role = role
-        self.avatar = avatar
         self.status = status
+        self.has_unread = has_unread
         self.current_task = current_task
     
     def compose(self):
-        """组装卡片内容"""
-        yield Static(self.avatar, classes="avatar")
-        yield Static(self.name, classes="name")
-        yield Static(self.role, classes="role")
-        yield Static(self.status_icon + " " + self.status_text, classes=f"status status-{self.status}")
-        if self.current_task:
-            yield Static(self.current_task[:20] + "..." if len(self.current_task) > 20 else self.current_task, classes="task")
-        with Horizontal(classes="actions"):
-            yield Button("💬 对话", id=f"chat-{self.employee_id}", variant="primary")
-            yield Button("📊 详情", id=f"detail-{self.employee_id}", variant="default")
+        """组装卡片内容 - 三部分：头部、内容、底部"""
+        # 头部：状态指示器
+        status_line = f"{self.status_emoji} {self.status_text}"
+        if self.has_unread:
+            status_line += "  💬"
+        yield Static(status_line, classes="card-header status-indicator")
+        
+        # 主体：🦞 图标 + 姓名 + 角色
+        with Vertical(classes="card-body"):
+            yield Static("🦞", classes="emoji-icon")
+            yield Static(self.name, classes="name-text")
+            yield Static(self.role, classes="role-text")
+        
+        # 底部：当前任务 + 操作按钮
+        task_display = self.current_task[:12] + "..." if len(self.current_task) > 12 else (self.current_task or "无任务")
+        yield Static(f"📋 {task_display}", classes="card-footer")
     
     @property
-    def status_icon(self) -> str:
-        """根据状态返回图标"""
-        icons = {
+    def status_emoji(self) -> str:
+        """状态对应的emoji"""
+        return {
             "idle": "🟢",
             "working": "🟡",
-            "offline": "🔴"
-        }
-        return icons.get(self.status, "⚪")
+            "offline": "⚫",
+        }.get(self.status, "⚪")
     
     @property
     def status_text(self) -> str:
-        """返回状态文本"""
-        texts = {
+        """状态文本"""
+        return {
             "idle": "空闲",
             "working": "工作中",
-            "offline": "离线"
-        }
-        return texts.get(self.status, "未知")
+            "offline": "离线",
+        }.get(self.status, "未知")
     
     def watch_status(self, status: str):
-        """监听状态变化，更新显示"""
+        """监听状态变化"""
         try:
-            status_widget = self.query_one(".status", Static)
-            status_widget.update(self.status_icon + " " + self.status_text)
-            status_widget.remove_class("status-idle")
-            status_widget.remove_class("status-working")
-            status_widget.remove_class("status-offline")
-            status_widget.add_class(f"status-{status}")
+            header = self.query_one(".card-header", Static)
+            status_line = f"{self.status_emoji} {self.status_text}"
+            if self.has_unread:
+                status_line += "  💬"
+            header.update(status_line)
+        except Exception:
+            pass
+    
+    def watch_has_unread(self, has_unread: bool):
+        """监听未读消息变化"""
+        try:
+            header = self.query_one(".card-header", Static)
+            status_line = f"{self.status_emoji} {self.status_text}"
+            if has_unread:
+                status_line += "  💬"
+            header.update(status_line)
         except Exception:
             pass
     
     def watch_current_task(self, task: str):
         """监听任务变化"""
         try:
-            task_widget = self.query_one(".task", Static)
-            display = task[:20] + "..." if len(task) > 20 else task
-            task_widget.update(display)
+            footer = self.query_one(".card-footer", Static)
+            display = task[:12] + "..." if len(task) > 12 else (task or "无任务")
+            footer.update(f"📋 {display}")
         except Exception:
             pass
     
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        """处理按钮点击"""
-        button_id = event.button.id
-        if button_id == f"chat-{self.employee_id}":
-            self.app.push_screen("chat", {"employee_id": self.employee_id})
-        elif button_id == f"detail-{self.employee_id}":
-            self.app.show_employee_detail(self.employee_id)
+    def on_click(self):
+        """点击卡片进入对话"""
+        self.app.push_screen("chat", {"employee_id": self.employee_id})

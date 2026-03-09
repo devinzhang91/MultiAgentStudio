@@ -1,4 +1,4 @@
-"""主面板屏幕"""
+"""主面板屏幕 - 平面工作室风格"""
 from textual.screen import Screen
 from textual.widgets import Header, Footer, Static, Button
 from textual.containers import Horizontal, Vertical
@@ -9,108 +9,95 @@ from ..widgets.status_bar import StatusBar
 
 
 class DashboardScreen(Screen):
-    """主面板 - 展示所有员工总览"""
+    """主面板 - OpenClaw 工作室总览"""
     
     employees = reactive(list)
     
     DEFAULT_CSS = """
     DashboardScreen {
-        layout: grid;
-        grid-size: 2;
-        grid-columns: 15 1fr;
+        layout: vertical;
     }
-    DashboardScreen .sidebar {
-        width: 100%;
-        height: 100%;
-        border-right: solid $primary;
-        background: $surface-darken-1;
-        padding: 1;
-    }
-    DashboardScreen .sidebar .nav-item {
+    DashboardScreen .toolbar {
         height: 3;
+        background: $surface-darken-1;
+        border-bottom: solid $primary-darken-2;
+        padding: 0 2;
         content-align: left middle;
-        padding: 0 1;
-        margin: 1 0;
     }
-    DashboardScreen .sidebar .nav-item:hover {
-        background: $primary-darken-2;
+    DashboardScreen .toolbar Button {
+        margin-right: 1;
     }
-    DashboardScreen .main-content {
-        width: 100%;
-        height: 100%;
+    DashboardScreen .main-area {
+        height: 1fr;
         padding: 1;
     }
-    DashboardScreen .title-bar {
+    DashboardScreen .title-section {
         height: 3;
         content-align: left middle;
         text-style: bold;
-        border-bottom: solid $primary;
         margin-bottom: 1;
     }
     """
     
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        # 默认员工数据
+        # 默认员工数据 - 使用🦞作为图标
         self.employees = [
             {
                 "id": "alice-001",
                 "name": "Alice",
                 "role": "代码审查专家",
-                "avatar": "👩‍💻",
                 "status": "idle",
-                "current_task": ""
+                "current_task": "",
+                "unread": 0,
             },
             {
                 "id": "bob-002",
                 "name": "Bob",
                 "role": "文档生成助手",
-                "avatar": "👨‍💻",
                 "status": "working",
-                "current_task": "生成 API 文档..."
+                "current_task": "生成 API 文档",
+                "unread": 2,
             },
             {
                 "id": "carol-003",
                 "name": "Carol",
                 "role": "测试工程师",
-                "avatar": "🧪",
                 "status": "idle",
-                "current_task": ""
+                "current_task": "",
+                "unread": 0,
             },
             {
                 "id": "dave-004",
                 "name": "Dave",
                 "role": "DevOps 专家",
-                "avatar": "👾",
                 "status": "offline",
-                "current_task": ""
+                "current_task": "",
+                "unread": 0,
             },
             {
                 "id": "eve-005",
                 "name": "Eve",
                 "role": "数据分析助手",
-                "avatar": "🤖",
                 "status": "working",
-                "current_task": "等待输入..."
-            }
+                "current_task": "分析日志数据",
+                "unread": 1,
+            },
         ]
     
     def compose(self):
         """组装主面板"""
         yield Header(show_clock=True)
         
-        # 侧边栏
-        with Vertical(classes="sidebar"):
-            yield Static("👥 员工\n────", classes="nav-item")
-            yield Static("📊 统计\n────", classes="nav-item")
-            yield Static("💬 消息\n────", classes="nav-item")
-            yield Static("")
-            yield Button("刷新", id="refresh-btn", variant="primary")
-            yield Button("设置", id="settings-btn", variant="default")
+        # 工具栏
+        with Horizontal(classes="toolbar"):
+            yield Button("🔄 刷新", id="refresh-btn", variant="primary")
+            yield Button("⚙️ 设置", id="settings-btn", variant="default")
+            yield Button("❓ 帮助", id="help-btn", variant="default")
         
         # 主内容区
-        with Vertical(classes="main-content"):
-            yield Static("🎮 OpenClaw TUI Studio - AI 员工管理面板", classes="title-bar")
+        with Vertical(classes="main-area"):
+            yield Static("🦞 OpenClaw 工作室 - 员工列表", classes="title-section")
             yield EmployeeList(employees=self.employees)
         
         yield StatusBar(id="status-bar")
@@ -121,15 +108,35 @@ class DashboardScreen(Screen):
         status_bar = self.query_one("#status-bar", StatusBar)
         status_bar.total_count = len(self.employees)
         status_bar.online_count = sum(1 for e in self.employees if e["status"] != "offline")
+        status_bar.unread_total = sum(e.get("unread", 0) for e in self.employees)
     
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """处理按钮点击"""
         if event.button.id == "refresh-btn":
             self.refresh_data()
         elif event.button.id == "settings-btn":
-            self.app.push_screen("settings")
+            self.notify("设置功能开发中...", severity="information")
+        elif event.button.id == "help-btn":
+            self.show_help()
     
     def refresh_data(self):
         """刷新数据"""
+        self.notify("🔄 正在刷新...", severity="information")
         # TODO: 从 OpenClaw API 获取最新数据
-        self.notify("正在刷新数据...", severity="information")
+    
+    def show_help(self):
+        """显示帮助信息"""
+        help_text = """
+📖 快捷键说明:
+
+  q      - 退出应用
+  r      - 刷新数据  
+  ↑/↓    - 导航
+  Enter  - 打开对话
+  
+🦞 员工状态:
+  🟢 空闲  │  🟡 工作中  │  ⚫ 离线
+  
+💬 未读消息会在卡片上显示
+        """
+        self.notify(help_text, severity="information", timeout=10)
