@@ -1,5 +1,3 @@
-# OpenClaw TUI Studio
-
 # Python
 __pycache__/
 *.py[cod]
@@ -8,10 +6,10 @@ __pycache__/
 .Python
 
 # Virtual environments
+.venv/
 venv/
 ENV/
 env/
-.venv/
 
 # IDE
 .vscode/
@@ -23,5 +21,6 @@ env/
 .DS_Store
 Thumbs.db
 
-# Project specific (keep data files)
-# 保留 ~/.openclaw_studio/ 中的用户数据
+# Project data（身份文件包含敏感信息，不提交）
+data/identities/
+*.log

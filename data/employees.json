@@ -1,0 +1,34 @@
+{
+  "emp-001": {
+    "id": "emp-001",
+    "name": "Alice",
+    "role": "代码审查专家",
+    "status": "offline",
+    "current_task": "",
+    "unread_count": 0,
+    "last_error": "",
+    "config": {
+      "base_url": "wss://gateway.openclaw.example.com",
+      "token": "your_token_here",
+      "session_key": "alice",
+      "timeout": 120,
+      "enabled": false
+    }
+  },
+  "emp-002": {
+    "id": "emp-002",
+    "name": "Bob",
+    "role": "文档生成助手",
+    "status": "offline",
+    "current_task": "",
+    "unread_count": 0,
+    "last_error": "",
+    "config": {
+      "base_url": "wss://gateway.openclaw.example.com",
+      "token": "your_token_here",
+      "session_key": "bob",
+      "timeout": 120,
+      "enabled": false
+    }
+  }
+}

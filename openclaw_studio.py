@@ -66,8 +66,11 @@ class DataStore:
     """本地数据存储"""
     
     def __init__(self):
-        self.data_dir = Path.home() / ".openclaw_studio"
+        # 使用项目目录下的 data/ 文件夹
+        self.data_dir = Path(__file__).parent / "data"
         self.data_dir.mkdir(exist_ok=True)
+        self.identities_dir = self.data_dir / "identities"
+        self.identities_dir.mkdir(exist_ok=True)
         self.employees_file = self.data_dir / "employees.json"
         self.employees: Dict[str, Employee] = {}
         self.load()
@@ -158,7 +161,7 @@ class OpenClawConnection:
     
     def _load_or_create_identity(self):
         """加载或创建设备身份"""
-        identity_file = Path.home() / ".openclaw_studio" / f"identity_{self.employee.id}.json"
+        identity_file = Path(__file__).parent / "data" / "identities" / f"{self.employee.id}.json"
         
         if identity_file.exists():
             try:

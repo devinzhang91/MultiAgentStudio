@@ -6,7 +6,7 @@
 
 - **单文件**: 只有一个 `openclaw_studio.py`，无需复杂架构
 - **直接运行**: 无需前后端分离，一条命令启动
-- **本地存储**: 员工配置保存在 `~/.openclaw_studio/employees.json`
+- **本地存储**: 员工配置保存在项目目录的 `data/employees.json`
 - **多平台**: Python + Textual，支持 macOS/Linux/Windows
 - **独立连接**: 每个员工有独立的 OpenClaw WebSocket 连接
 
@@ -39,17 +39,18 @@ openclaw-tui-studio/
 ├── openclaw_studio.py    # 主程序（单文件，~800行）
 ├── run.sh                # 启动脚本
 ├── README.md             # 本文件
-└── LICENSE               # MIT 许可证
-
-# 运行后自动创建
-~/.openclaw_studio/
-├── employees.json        # 员工配置
-└── identity_*.json       # 员工身份文件
+├── LICENSE               # MIT 许可证
+├── .gitignore            # Git 忽略配置
+└── data/                 # 数据目录（自动创建）
+    ├── employees.json    # 员工信息配置文件
+    └── identities/       # 员工身份文件（自动创建）
+        ├── emp-001.json
+        └── emp-002.json
 ```
 
 ## ⚙️ 配置员工
 
-首次运行会自动创建示例配置。编辑 `~/.openclaw_studio/employees.json`：
+编辑 `data/employees.json` 文件来添加/修改员工：
 
 ```json
 {
@@ -60,6 +61,7 @@ openclaw-tui-studio/
     "status": "offline",
     "current_task": "",
     "unread_count": 0,
+    "last_error": "",
     "config": {
       "base_url": "wss://your-openclaw-gateway.com",
       "token": "your_token_here",
@@ -80,6 +82,14 @@ openclaw-tui-studio/
 | `session_key` | 会话标识 | `alice` |
 | `timeout` | 请求超时（秒） | `120` |
 | `enabled` | 是否启用连接 | `true`/`false` |
+
+### 添加新员工
+
+1. 复制一个现有员工配置块
+2. 修改 `id`（如 `emp-003`）
+3. 修改 `name`、`role` 等信息
+4. 配置 `config` 中的连接参数
+5. 保存文件并重启程序
 
 ## ⌨️ 快捷键
 
