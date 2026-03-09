@@ -1,30 +1,21 @@
 """主面板 - 员工列表 + 管理功能"""
 from textual.screen import Screen
-from textual.widgets import Header, Footer, Static, Button, Input, Label, Switch, DataTable
+from textual.widgets import Header, Footer, Static, Button, Input, Label, Switch
 from textual.containers import Horizontal, Vertical, Container
 from textual.reactive import reactive
-from textual import work
-import asyncio
 
 
 class EmployeeCard(Vertical):
     """员工卡片"""
     
-    employee_id = reactive("")
-    name = reactive("")
-    role = reactive("")
-    status = reactive("offline")
-    current_task = reactive("")
-    unread_count = reactive(0)
-    connection_error = reactive(None)
-    
     DEFAULT_CSS = """
     EmployeeCard {
-        width: 30;
-        height: 14;
+        width: 28;
+        height: 12;
         background: $surface;
         border: solid $primary-darken-2;
         padding: 0;
+        margin: 0 1 1 0;
         cursor: pointer;
     }
     EmployeeCard:hover {
@@ -38,12 +29,12 @@ class EmployeeCard(Vertical):
         content-align: center middle;
     }
     EmployeeCard .card-body {
-        height: 7;
+        height: 6;
         padding: 0 1;
         content-align: center middle;
     }
     EmployeeCard .card-footer {
-        height: 2;
+        height: 3;
         content-align: center middle;
         color: $text-muted;
     }
@@ -59,155 +50,43 @@ class EmployeeCard(Vertical):
         text-align: center;
         color: $text-muted;
     }
-    EmployeeCard .error-text {
-        color: $error;
-        text-align: center;
-        text-style: italic;
-    }
     """
     
     def __init__(self, employee: dict, **kwargs):
         super().__init__(**kwargs)
-        self.employee_id = employee.get("id", "")
-        self.name = employee.get("name", "Unknown")
-        self.role = employee.get("role", "")
-        self.status = employee.get("status", "offline")
-        self.current_task = employee.get("current_task", "")
-        self.unread_count = employee.get("unread_count", 0)
-        self.connection_error = employee.get("connection_error")
+        self.emp = employee
         self.can_focus = True
     
     def compose(self):
-        status_emoji = {"idle": "🟢", "working": "🟡", "offline": "⚫", "error": "🔴"}.get(self.status, "⚪")
-        status_text = {"idle": "空闲", "working": "工作中", "offline": "离线", "error": "错误"}.get(self.status, "未知")
+        emp = self.emp
+        status = emp.get("status", "offline")
+        status_emoji = {"idle": "🟢", "working": "🟡", "offline": "⚫", "error": "🔴"}.get(status, "⚪")
+        status_text = {"idle": "空闲", "working": "工作中", "offline": "离线", "error": "错误"}.get(status, "未知")
         
         header_text = f"{status_emoji} {status_text}"
-        if self.unread_count > 0:
-            header_text += f" 💬{self.unread_count}"
+        unread = emp.get("unread_count", 0)
+        if unread > 0:
+            header_text += f" 💬{unread}"
         
         yield Static(header_text, classes="card-header")
         
         with Vertical(classes="card-body"):
             yield Static("🦞", classes="emoji-icon")
-            yield Static(self.name, classes="name-text")
-            yield Static(self.role, classes="role-text")
-            if self.connection_error:
-                yield Static(f"⚠️ {self.connection_error[:20]}...", classes="error-text")
+            yield Static(emp.get("name", "Unknown"), classes="name-text")
+            yield Static(emp.get("role", ""), classes="role-text")
         
-        task_display = self.current_task[:16] + "..." if len(self.current_task) > 16 else (self.current_task or "无任务")
+        task = emp.get("current_task", "") or "无任务"
+        task_display = task[:14] + "..." if len(task) > 14 else task
         yield Static(f"📋 {task_display}", classes="card-footer")
     
     def on_click(self):
-        self.app.open_chat(self.employee_id)
+        self.app.open_chat(self.emp.get("id"))
     
     def on_key(self, event):
         if event.key == "enter":
-            self.app.open_chat(self.employee_id)
+            self.app.open_chat(self.emp.get("id"))
         elif event.key == "space":
-            self.app.show_employee_detail(self.employee_id)
-
-
-class EmployeePropertyScreen(Screen):
-    """员工属性界面"""
-    
-    BINDINGS = [("escape, q", "go_back", "返回")]
-    
-    def __init__(self, employee: dict, **kwargs):
-        super().__init__(**kwargs)
-        self.employee = employee
-        self.config = employee.get("config", {})
-    
-    def compose(self):
-        yield Header(show_clock=True)
-        
-        with Container(classes="container"):
-            yield Static(f"🦞 员工属性 - {self.employee.get('name')}", classes="title")
-            
-            with Grid(classes="form-grid"):
-                yield Label("ID:"); yield Static(self.employee.get("id", ""))
-                yield Label("名称:"); yield Static(self.employee.get("name", ""))
-                yield Label("角色:"); yield Static(self.employee.get("role", ""))
-                yield Label("状态:"); yield Static(self.employee.get("status", ""))
-                yield Label("当前任务:"); yield Static(self.employee.get("current_task") or "无")
-                
-                yield Static("", classes="divider"); yield Static("")
-                yield Label("OpenClaw 配置", classes="section-title"); yield Static("")
-                
-                yield Label("Base URL:"); yield Static(self.config.get("base_url", "未配置"))
-                yield Label("Token:"); 
-                token = self.config.get("token", "")
-                yield Static(f"{token[:10]}..." if len(token) > 10 else (token or "未配置"))
-                yield Label("Session Key:"); yield Static(self.config.get("session_key", "default"))
-                yield Label("Timeout:"); yield Static(f"{self.config.get('timeout', 120)} 秒")
-                yield Label("Enabled:"); yield Static("✅ 启用" if self.config.get("enabled") else "❌ 禁用")
-                
-                yield Static("", classes="divider"); yield Static("")
-                yield Label("创建时间:"); yield Static(self.employee.get("created_at", "")[:19])
-                yield Label("更新时间:"); yield Static(self.employee.get("updated_at", "")[:19])
-            
-            with Horizontal(classes="button-row"):
-                yield Button("← 返回", id="back", variant="default")
-                yield Button("🔄 重启连接", id="restart", variant="primary")
-                yield Button("🗑️ 删除员工", id="delete", variant="error")
-        
-        yield Footer()
-    
-    DEFAULT_CSS = """
-    EmployeePropertyScreen { align: center middle; }
-    EmployeePropertyScreen .container { 
-        width: 80; height: auto; max-height: 90%;
-        border: solid $primary; padding: 1 2;
-    }
-    EmployeePropertyScreen .title { 
-        text-style: bold; height: 3;
-        content-align: center middle;
-        border-bottom: solid $primary-darken-2;
-    }
-    EmployeePropertyScreen .form-grid {
-        grid-size: 2; grid-columns: 15 1fr;
-        grid-gutter: 1; padding: 1 0; height: auto;
-    }
-    EmployeePropertyScreen .section-title {
-        text-style: bold; color: $accent; column-span: 2;
-    }
-    EmployeePropertyScreen .divider {
-        height: 1; background: $primary-darken-2; column-span: 2;
-    }
-    EmployeePropertyScreen .button-row {
-        height: 3; align: center middle; margin-top: 1;
-    }
-    EmployeePropertyScreen .button-row Button { margin: 0 1; }
-    """
-    
-    def on_button_pressed(self, event):
-        if event.button.id == "back":
-            self.action_go_back()
-        elif event.button.id == "restart":
-            self.restart_connection()
-        elif event.button.id == "delete":
-            self.delete_employee()
-    
-    @work(exclusive=True)
-    async def restart_connection(self):
-        self.notify("🔄 正在重启连接...")
-        try:
-            await self.app.client.post(f"/api/employees/{self.employee['id']}/restart")
-            self.notify("✅ 连接已重启")
-        except Exception as e:
-            self.notify(f"❌ 重启失败: {e}", severity="error")
-    
-    @work(exclusive=True)
-    async def delete_employee(self):
-        self.notify("🗑️ 删除员工...")
-        try:
-            await self.app.client.delete(f"/api/employees/{self.employee['id']}")
-            self.notify("✅ 员工已删除")
-            self.action_go_back()
-        except Exception as e:
-            self.notify(f"❌ 删除失败: {e}", severity="error")
-    
-    def action_go_back(self):
-        self.app.pop_screen()
+            self.app.show_employee_detail(self.emp.get("id"))
 
 
 class AddEmployeeScreen(Screen):
@@ -224,7 +103,7 @@ class AddEmployeeScreen(Screen):
             with Vertical(classes="form"):
                 yield Label("基本信息", classes="section-title")
                 yield Input(placeholder="员工名称 *", id="name")
-                yield Input(placeholder="角色（如：代码审查专家）", id="role")
+                yield Input(placeholder="角色（如：代码审查专家）", id="role", value="OpenClaw 员工")
                 
                 yield Static("", classes="divider")
                 yield Label("OpenClaw 连接配置", classes="section-title")
@@ -275,14 +154,13 @@ class AddEmployeeScreen(Screen):
         elif event.button.id == "create":
             self.create_employee()
     
-    @work(exclusive=True)
     async def create_employee(self):
         name = self.query_one("#name", Input).value.strip()
-        role = self.query_one("#role", Input).value.strip() or "OpenClaw 员工"
+        role = self.query_one("#role", Input).value.strip()
         base_url = self.query_one("#base_url", Input).value.strip()
         token = self.query_one("#token", Input).value.strip()
-        session_key = self.query_one("#session_key", Input).value.strip() or "default"
-        timeout_str = self.query_one("#timeout", Input).value.strip() or "120"
+        session_key = self.query_one("#session_key", Input).value.strip()
+        timeout_str = self.query_one("#timeout", Input).value.strip()
         enabled = self.query_one("#enabled", Switch).value
         
         if not name:
@@ -331,11 +209,9 @@ class DashboardScreen(Screen):
         ("?", "show_help", "帮助"),
     ]
     
+    # 使用 reactive 变量
     employees = reactive(list)
-    
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.employees = []
+    connection_status = reactive("🟡 连接中...")
     
     def compose(self):
         yield Header(show_clock=True)
@@ -348,15 +224,12 @@ class DashboardScreen(Screen):
             
             yield Static("🦞 OpenClaw 工作室 - 点击卡片对话，Space 查看属性", classes="subtitle")
             
-            # 员工卡片容器
+            # 员工卡片区域
             with Vertical(id="employee-container"):
-                with Horizontal(id="employee-row-1"):
-                    pass
-                with Horizontal(id="employee-row-2"):
-                    pass
+                pass  # 动态填充
             
             with Horizontal(classes="status-bar"):
-                yield Static("🟡 连接中...", id="conn-status")
+                yield Static(self.connection_status, id="conn-status")
                 yield Static("🦞 0", id="emp-count")
         
         yield Footer()
@@ -375,10 +248,10 @@ class DashboardScreen(Screen):
     DashboardScreen #employee-container {
         height: 1fr;
         padding: 1 2;
-    }
-    DashboardScreen #employee-row-1, DashboardScreen #employee-row-2 {
-        height: auto;
-        align: left top;
+        layout: grid;
+        grid-size: 4;
+        grid-columns: 1fr 1fr 1fr 1fr;
+        grid-gutter: 1;
     }
     DashboardScreen .status-bar {
         height: 1; background: $primary-darken-3;
@@ -387,72 +260,61 @@ class DashboardScreen(Screen):
     """
     
     def on_mount(self):
+        """挂载后自动加载数据"""
         self.load_employees()
     
-    @work(exclusive=True)
     async def load_employees(self):
+        """异步加载员工列表"""
         try:
-            self.employees = await self.app.client.get_employees()
-            print(f"[Dashboard] 加载到 {len(self.employees)} 个员工")
-            
-            # 使用 app.call_from_thread 在 UI 线程中更新
-            def do_update():
-                self.update_display()
-                try:
-                    self.query_one("#conn-status", Static).update("🟢 已连接")
-                except:
-                    pass
-            
-            self.app.call_from_thread(do_update)
+            data = await self.app.client.get_employees()
+            self.employees = data  # 这会触发 watch_employees
+            self.connection_status = "🟢 已连接"
         except Exception as e:
             print(f"[Dashboard] 加载失败: {e}")
-            def do_error():
-                try:
-                    self.query_one("#conn-status", Static).update(f"🔴 错误: {e}")
-                except:
-                    pass
-            self.app.call_from_thread(do_error)
+            self.connection_status = f"🔴 错误: {e}"
     
-    def update_display(self):
+    def watch_employees(self, employees):
+        """监听 employees 变化，更新显示"""
         try:
-            # 获取行容器
-            row1 = self.query_one("#employee-row-1")
-            row2 = self.query_one("#employee-row-2")
+            container = self.query_one("#employee-container")
             
-            # 清空现有卡片
-            for child in list(row1.children):
-                child.remove()
-            for child in list(row2.children):
+            # 清空现有内容
+            for child in list(container.children):
                 child.remove()
             
-            # 添加员工卡片（每行4个）
-            for i, emp in enumerate(self.employees):
-                card = EmployeeCard(emp)
-                if i < 4:
-                    row1.mount(card)
-                else:
-                    row2.mount(card)
+            # 添加员工卡片
+            for emp in employees:
+                container.mount(EmployeeCard(emp))
             
-            online = sum(1 for e in self.employees if e.get("status") != "offline")
-            self.query_one("#emp-count", Static).update(f"🦞 {online}/{len(self.employees)}")
+            # 更新计数
+            online = sum(1 for e in employees if e.get("status") != "offline")
+            self.query_one("#emp-count", Static).update(f"🦞 {online}/{len(employees)}")
+            
         except Exception as e:
             print(f"[Dashboard] 更新显示错误: {e}")
+    
+    def watch_connection_status(self, status):
+        """监听连接状态变化"""
+        try:
+            self.query_one("#conn-status", Static).update(status)
+        except:
+            pass
     
     def on_button_pressed(self, event):
         if event.button.id == "refresh":
             self.load_employees()
         elif event.button.id == "add":
-            self.action_add_employee()
+            self.push_screen(AddEmployeeScreen())
         elif event.button.id == "help":
-            self.action_show_help()
+            self.show_help()
     
     def action_refresh(self):
         self.load_employees()
     
     def action_add_employee(self):
-        self.app.push_screen(AddEmployeeScreen())
+        self.push_screen(AddEmployeeScreen())
     
-    def action_show_help(self):
+    def show_help(self):
         help_text = """
 🖱️ 鼠标:
   点击卡片   进入对话
@@ -460,20 +322,9 @@ class DashboardScreen(Screen):
 
 ⌨️ 键盘:
   Enter      进入对话
-  Space      查看属性/删除/重启
+  Space      查看属性
   a          添加新员工
   r          刷新列表
   q          退出
-
-配置项:
-  - Base URL: OpenClaw Gateway 地址
-  - Token: 认证令牌
-  - Session Key: 会话标识
-  - Timeout: 请求超时时间
 """
-        self.notify(help_text, severity="information", timeout=20)
-    
-    def watch_employees(self, employees):
-        # 当 employees 变化时，如果 UI 已挂载则更新
-        if self.is_mounted:
-            self.update_display()
+        self.notify(help_text, severity="information", timeout=15)
