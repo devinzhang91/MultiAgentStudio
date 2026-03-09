@@ -1,0 +1,105 @@
+# OpenClaw TUI Studio 配置示例
+# 复制为 config.yaml 并填入你的实际配置
+
+openclaw:
+  # OpenClaw API 基础地址
+  api_base: "https://api.openclaw.ai"
+  
+  # API 密钥 (建议使用环境变量 OPENCLAW_API_KEY)
+  api_key: "${OPENCLAW_API_KEY}"
+  
+  # Webhook 配置
+  webhook:
+    # 发送消息到 OpenClaw 的 Webhook URL
+    send_url: "${OPENCLAW_WEBHOOK_SEND_URL}"
+    
+    # 本地接收 OpenClaw 回调的配置
+    receive:
+      # 监听端口
+      port: 8765
+      # 回调路径
+      path: "/webhook"
+      # Webhook 密钥，用于验证回调签名 (建议使用环境变量)
+      secret: "${WEBHOOK_SECRET}"
+      # 是否自动尝试暴露公网地址 (用于开发测试)
+      # 可选: "ngrok", "localtunnel", null
+      tunnel: null
+
+  # 轮询配置 (作为 webhook 的补充/降级方案)
+  polling:
+    # 是否启用轮询
+    enabled: true
+    # 轮询间隔 (秒)
+    interval: 5
+
+# 员工配置
+# 如果 OpenClaw API 支持获取员工列表，此配置将被 API 数据覆盖
+employees:
+  - id: "alice-001"
+    name: "Alice"
+    role: "代码审查专家"
+    avatar: "👩‍💻"
+    description: "擅长代码质量分析和重构建议"
+    
+  - id: "bob-002"
+    name: "Bob"
+    role: "文档生成助手"
+    avatar: "👨‍💻"
+    description: "自动生成技术文档和 README"
+    
+  - id: "carol-003"
+    name: "Carol"
+    role: "测试工程师"
+    avatar: "🧪"
+    description: "编写测试用例和执行测试计划"
+    
+  - id: "dave-004"
+    name: "Dave"
+    role: "DevOps 专家"
+    avatar: "👾"
+    description: "CI/CD 配置和部署自动化"
+    
+  - id: "eve-005"
+    name: "Eve"
+    role: "数据分析助手"
+    avatar: "🤖"
+    description: "数据处理和可视化"
+
+# UI 配置
+ui:
+  # 主题: "dark", "light", "high-contrast"
+  theme: "dark"
+  
+  # 状态刷新间隔 (秒)
+  refresh_interval: 2
+  
+  # 最大日志行数
+  max_log_lines: 1000
+  
+  # 是否显示动画效果
+  animations: true
+  
+  # 日期时间格式
+  datetime_format: "%H:%M:%S"
+  
+  # 快捷键配置
+  keybindings:
+    quit: "q"
+    refresh: "r"
+    search: "/"
+    next_employee: "j"
+    prev_employee: "k"
+    open_chat: "enter"
+    back: "escape"
+
+# 日志配置
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  file: "logs/openclaw-tui.log"
+  max_size: "10MB"
+  backup_count: 5
+  
+  # 控制台日志 (TUI 中显示)
+  console:
+    enabled: true
+    level: "WARNING"
