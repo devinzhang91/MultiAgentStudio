@@ -12,20 +12,24 @@
 
 ## 🚀 快速开始
 
-### 安装依赖
+### 方式1: 使用脚本（推荐）
+
+脚本会自动创建虚拟环境并安装依赖：
 
 ```bash
-pip3 install textual aiohttp cryptography
+./run.sh
 ```
 
-### 运行
+### 方式2: 手动运行
+
+如果你不想用虚拟环境：
 
 ```bash
-# 方式1: 直接运行
-python3 openclaw_studio.py
+# 安装依赖
+pip3 install textual aiohttp cryptography
 
-# 方式2: 使用脚本
-./run.sh
+# 运行
+python3 openclaw_studio.py
 ```
 
 ## 📁 项目结构
