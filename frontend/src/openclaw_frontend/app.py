@@ -85,7 +85,7 @@ class OpenClawFrontendApp(App):
         async def load_and_show():
             emp = await self.client.get_employee(employee_id)
             if emp:
-                self.call_from_thread(lambda: self.push_screen(EmployeePropertyScreen(emp)))
+                self.app.call_from_thread(lambda: self.push_screen(EmployeePropertyScreen(emp)))
         
         asyncio.create_task(load_and_show())
 

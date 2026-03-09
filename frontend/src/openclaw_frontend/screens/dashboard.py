@@ -395,15 +395,23 @@ class DashboardScreen(Screen):
             self.employees = await self.app.client.get_employees()
             print(f"[Dashboard] 加载到 {len(self.employees)} 个员工")
             
-            # 使用 call_from_thread 在 UI 线程中更新
+            # 使用 app.call_from_thread 在 UI 线程中更新
             def do_update():
                 self.update_display()
-                self.query_one("#conn-status", Static).update("🟢 已连接")
+                try:
+                    self.query_one("#conn-status", Static).update("🟢 已连接")
+                except:
+                    pass
             
-            self.call_from_thread(do_update)
+            self.app.call_from_thread(do_update)
         except Exception as e:
             print(f"[Dashboard] 加载失败: {e}")
-            self.call_from_thread(lambda: self.query_one("#conn-status", Static).update(f"🔴 错误: {e}"))
+            def do_error():
+                try:
+                    self.query_one("#conn-status", Static).update(f"🔴 错误: {e}")
+                except:
+                    pass
+            self.app.call_from_thread(do_error)
     
     def update_display(self):
         try:
