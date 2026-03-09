@@ -172,27 +172,24 @@ class DashboardScreen(Screen):
     }
     """
     
-    def on_mount(self):
+    async def on_mount(self):
         """挂载后加载数据"""
         print("[Dashboard] on_mount 被调用")
-        # 延迟一点再加载，确保 DOM 已准备好
-        self.set_timer(0.5, self.load_employees)
+        await self.load_employees()
     
-    def load_employees(self):
+    async def load_employees(self):
         """加载员工列表"""
         print("[Dashboard] 开始加载员工...")
-        
-        async def _load():
-            try:
-                data = await self.app.client.get_employees()
-                print(f"[Dashboard] 加载到 {len(data)} 个员工: {[e.get('name') for e in data]}")
-                # 直接更新 UI
-                self.update_employee_list(data)
-            except Exception as e:
-                print(f"[Dashboard] 加载失败: {e}")
-                self.update_status(f"🔴 错误: {e}")
-        
-        self.run_worker(_load)
+        try:
+            data = await self.app.client.get_employees()
+            print(f"[Dashboard] 加载到 {len(data)} 个员工: {[e.get('name') for e in data]}")
+            # 直接更新 UI
+            self.update_employee_list(data)
+        except Exception as e:
+            print(f"[Dashboard] 加载失败: {e}")
+            import traceback
+            traceback.print_exc()
+            self.update_status(f"🔴 错误: {e}")
     
     def update_employee_list(self, employees):
         """更新员工列表显示"""
