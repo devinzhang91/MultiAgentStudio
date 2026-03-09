@@ -3,6 +3,14 @@ OpenClaw TUI Studio - 主应用入口
 
 🦞 可视化的二进制 OpenClaw 工作室
 在终端中管理你的 OpenClaw AI 员工团队
+
+操作指南:
+- ↑/↓/←/→ : 导航员工卡片
+- Tab     : 切换焦点
+- Enter   : 进入对话/发送消息
+- Space   : 查看员工详情
+- Esc     : 返回工作室
+- q       : 退出应用
 """
 import asyncio
 from typing import Optional, Any
@@ -27,9 +35,9 @@ class OpenClawStudioApp(App):
     connected = reactive(False)
     
     BINDINGS = [
-        ("q", "quit", "退出"),
-        ("r", "action_refresh", "刷新"),
-        ("d", "push_screen('dashboard')", "主面板"),
+        ("q", "quit", "退出(q)"),
+        ("r", "action_refresh", "刷新(r)"),
+        ("?", "show_help", "帮助(?)"),
     ]
     
     SCREENS = {
@@ -67,7 +75,8 @@ class OpenClawStudioApp(App):
         if self.config.get("api_key"):
             await self._init_openclaw_client()
         else:
-            self.notify("🦞 运行模式: 演示模式 (未配置 API)", severity="warning")
+            self.notify("🦞 演示模式 - 使用方向键导航，Enter 对话，q 退出", 
+                       severity="information", timeout=5)
             self.state_manager.connected = False
     
     async def _init_openclaw_client(self):
@@ -95,7 +104,7 @@ class OpenClawStudioApp(App):
             
             self.connected = True
             self.state_manager.connected = True
-            self.notify("🦞 已连接到 OpenClaw", severity="information")
+            self.notify("🦞 已连接到 OpenClaw！按 ? 查看帮助", severity="information")
             
         except Exception as e:
             self.notify(f"❌ 连接失败: {e}", severity="error")
@@ -141,7 +150,16 @@ class OpenClawStudioApp(App):
             asyncio.create_task(self.employee_manager.load_employees())
             self.notify("🔄 刷新中...", severity="information")
         else:
-            self.notify("⚠️ 演示模式 - 无数据刷新", severity="warning")
+            self.notify("🔄 演示模式 - 模拟刷新", severity="information")
+    
+    def action_show_help(self):
+        """显示帮助"""
+        try:
+            screen = self.screen
+            if hasattr(screen, 'action_show_help'):
+                screen.action_show_help()
+        except Exception:
+            pass
     
     def push_screen(self, screen_name: str, data: dict = None):
         """切换屏幕"""
@@ -199,6 +217,13 @@ class OpenClawStudioApp(App):
                 chat_screen.on_chat_message(response)
         except Exception:
             pass
+    
+    def on_key(self, event):
+        """全局键盘处理"""
+        # 问号键显示帮助
+        if event.character == "?":
+            self.action_show_help()
+            event.stop()
 
 
 def main():

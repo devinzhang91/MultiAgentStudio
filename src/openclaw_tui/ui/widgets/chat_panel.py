@@ -1,14 +1,13 @@
-"""聊天面板组件 - 平面风格"""
+"""聊天面板组件 - 支持键盘导航"""
 from textual.widgets import Static, Input, RichLog
 from textual.containers import Vertical, Horizontal
 from textual.reactive import reactive
 from rich.text import Text
-from rich.markdown import Markdown
 from datetime import datetime
 
 
 class ChatPanel(Vertical):
-    """聊天面板 - 扁平化对话界面"""
+    """聊天面板 - 扁平化对话界面，支持键盘导航"""
     
     messages = reactive(list)
     employee_name = reactive("")
@@ -20,27 +19,26 @@ class ChatPanel(Vertical):
         height: 100%;
         padding: 0;
     }
-    ChatPanel .chat-header {
-        height: 3;
-        background: $primary-darken-3;
-        content-align: center middle;
-        text-style: bold;
-        border-bottom: solid $primary-darken-2;
-    }
     ChatPanel .messages-area {
         height: 1fr;
         background: $surface-darken-1;
-        padding: 1;
+        padding: 1 2;
+        border-bottom: solid $primary-darken-2;
     }
-    ChatPanel .input-area {
+    ChatPanel .input-container {
         height: 3;
         background: $surface;
-        border-top: solid $primary-darken-2;
     }
-    ChatPanel .input-area Input {
-        width: 1fr;
+    ChatPanel .input-container Input {
+        width: 100%;
+        height: 100%;
         border: none;
         background: $surface;
+        padding: 0 2;
+        content-align: left middle;
+    }
+    ChatPanel .input-container Input:focus {
+        background: $surface-lighten-1;
     }
     ChatPanel .typing-indicator {
         color: $text-muted;
@@ -56,10 +54,13 @@ class ChatPanel(Vertical):
     
     def compose(self):
         """组装聊天界面"""
-        yield Static(f"🦞 {self.employee_name}", classes="chat-header")
-        yield RichLog(classes="messages-area", id="chat-messages", wrap=True)
-        with Horizontal(classes="input-area"):
-            yield Input(placeholder="💭 输入消息或命令...", id="chat-input")
+        yield RichLog(classes="messages-area", id="chat-messages", wrap=True, markup=True)
+        
+        with Horizontal(classes="input-container"):
+            yield Input(
+                placeholder="💭 输入消息或命令，按 Enter 发送...",
+                id="chat-input"
+            )
     
     def add_message(self, sender: str, content: str, is_user: bool = False):
         """添加消息到聊天"""
@@ -77,9 +78,13 @@ class ChatPanel(Vertical):
         log = self.query_one("#chat-messages", RichLog)
         
         if is_user:
-            header = Text(f"🧑 你 · {timestamp}", style="cyan bold")
+            header = Text()
+            header.append("🧑 ", style="cyan")
+            header.append(f"你 · {timestamp}", style="cyan bold")
         else:
-            header = Text(f"🦞 {sender} · {timestamp}", style="green bold")
+            header = Text()
+            header.append("🦞 ", style="green")
+            header.append(f"{sender} · {timestamp}", style="green bold")
         
         log.write(header)
         log.write(content)
@@ -110,3 +115,10 @@ class ChatPanel(Vertical):
             
             # 通知 app 发送
             self.app.send_to_employee(self.employee_id, content)
+    
+    def on_key(self, event):
+        """处理键盘事件"""
+        if event.key == "escape":
+            # Escape 返回工作室
+            event.stop()
+            self.app.pop_screen()

@@ -1,4 +1,4 @@
-"""主面板屏幕 - 平面工作室风格"""
+"""主面板屏幕 - 支持键盘导航"""
 from textual.screen import Screen
 from textual.widgets import Header, Footer, Static, Button
 from textual.containers import Horizontal, Vertical
@@ -9,7 +9,7 @@ from ..widgets.status_bar import StatusBar
 
 
 class DashboardScreen(Screen):
-    """主面板 - OpenClaw 工作室总览"""
+    """主面板 - OpenClaw 工作室总览，支持键盘导航"""
     
     employees = reactive(list)
     
@@ -26,6 +26,10 @@ class DashboardScreen(Screen):
     }
     DashboardScreen .toolbar Button {
         margin-right: 1;
+        min-width: 10;
+    }
+    DashboardScreen .toolbar Button:focus {
+        background: $accent;
     }
     DashboardScreen .main-area {
         height: 1fr;
@@ -36,60 +40,31 @@ class DashboardScreen(Screen):
         content-align: left middle;
         text-style: bold;
         margin-bottom: 1;
+        padding: 0 2;
     }
     """
     
+    BINDINGS = [
+        ("q", "quit", "退出"),
+        ("r", "action_refresh", "刷新"),
+        ("?", "show_help", "帮助"),
+    ]
+    
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        # 默认员工数据 - 使用🦞作为图标
         self.employees = [
-            {
-                "id": "alice-001",
-                "name": "Alice",
-                "role": "代码审查专家",
-                "status": "idle",
-                "current_task": "",
-                "unread": 0,
-            },
-            {
-                "id": "bob-002",
-                "name": "Bob",
-                "role": "文档生成助手",
-                "status": "working",
-                "current_task": "生成 API 文档",
-                "unread": 2,
-            },
-            {
-                "id": "carol-003",
-                "name": "Carol",
-                "role": "测试工程师",
-                "status": "idle",
-                "current_task": "",
-                "unread": 0,
-            },
-            {
-                "id": "dave-004",
-                "name": "Dave",
-                "role": "DevOps 专家",
-                "status": "offline",
-                "current_task": "",
-                "unread": 0,
-            },
-            {
-                "id": "eve-005",
-                "name": "Eve",
-                "role": "数据分析助手",
-                "status": "working",
-                "current_task": "分析日志数据",
-                "unread": 1,
-            },
+            {"id": "alice-001", "name": "Alice", "role": "代码审查专家", "status": "idle", "current_task": "", "unread": 0},
+            {"id": "bob-002", "name": "Bob", "role": "文档生成助手", "status": "working", "current_task": "生成 API 文档", "unread": 2},
+            {"id": "carol-003", "name": "Carol", "role": "测试工程师", "status": "idle", "current_task": "", "unread": 0},
+            {"id": "dave-004", "name": "Dave", "role": "DevOps 专家", "status": "offline", "current_task": "", "unread": 0},
+            {"id": "eve-005", "name": "Eve", "role": "数据分析助手", "status": "working", "current_task": "分析日志数据", "unread": 1},
         ]
     
     def compose(self):
         """组装主面板"""
         yield Header(show_clock=True)
         
-        # 工具栏
+        # 工具栏 - 按钮可以 Tab 导航
         with Horizontal(classes="toolbar"):
             yield Button("🔄 刷新", id="refresh-btn", variant="primary")
             yield Button("⚙️ 设置", id="settings-btn", variant="default")
@@ -113,30 +88,46 @@ class DashboardScreen(Screen):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """处理按钮点击"""
         if event.button.id == "refresh-btn":
-            self.refresh_data()
+            self.action_refresh()
         elif event.button.id == "settings-btn":
-            self.notify("设置功能开发中...", severity="information")
+            self.notify("⚙️ 设置功能开发中...", severity="information")
         elif event.button.id == "help-btn":
-            self.show_help()
+            self.action_show_help()
     
-    def refresh_data(self):
+    def action_refresh(self):
         """刷新数据"""
         self.notify("🔄 正在刷新...", severity="information")
-        # TODO: 从 OpenClaw API 获取最新数据
+        # 刷新员工列表
+        emp_list = self.query_one(EmployeeList)
+        # 模拟数据更新
+        for emp in self.employees:
+            if emp["id"] == "alice-001":
+                emp["status"] = "working"
+                emp["current_task"] = "代码审查中..."
+                break
+        emp_list.employees = self.employees
     
-    def show_help(self):
+    def action_show_help(self):
         """显示帮助信息"""
         help_text = """
-📖 快捷键说明:
+📖 键盘操作指南
 
-  q      - 退出应用
-  r      - 刷新数据  
-  ↑/↓    - 导航
-  Enter  - 打开对话
-  
-🦞 员工状态:
-  🟢 空闲  │  🟡 工作中  │  ⚫ 离线
-  
-💬 未读消息会在卡片上显示
+导航:
+  ↑/↓/←/→   在员工卡片间移动
+  Tab       在按钮和卡片间切换
+  Home      跳到第一个员工
+  End       跳到最后一个员工
+
+操作:
+  Enter     进入对话 / 点击按钮
+  Space     查看员工详情
+  q         退出应用
+  r         刷新数据
+  ?         显示帮助
+
+图标说明:
+  🦞  OpenClaw 员工    💬  未读消息
+  🟢  空闲状态         🟡  工作中
+  ⚫  离线状态         📋  当前任务
         """
-        self.notify(help_text, severity="information", timeout=10)
+        self.notify(help_text, severity="information", timeout=15)
