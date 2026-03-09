@@ -35,4 +35,4 @@ pip install -q -e "$FRONTEND_DIR"
 
 # 启动前端（前台运行，占用终端）
 echo ""
-python3 -m openclaw_frontend
+openclaw-frontend
