@@ -1,140 +1,110 @@
 #!/usr/bin/env python3
 """
-🦞 OpenClaw TUI Studio - 简洁版
-单文件运行，无需前后端分离
-
-使用方法:
-    python3 openclaw_studio.py
-
-依赖:
-    pip install textual aiohttp cryptography
+🦞 OpenClaw TUI Studio - 交互式终端界面
+支持键盘导航和鼠标操作
 """
 
 import json
-import os
-import sys
-import time
+import asyncio
 import uuid
-import base64
-import hashlib
 from pathlib import Path
-from datetime import datetime
-from typing import Optional, Dict, List, Any
 from dataclasses import dataclass, field, asdict
-from urllib.parse import urlparse
-
-import aiohttp
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from typing import Optional, Dict, List, Callable
+from datetime import datetime
 
 from textual.app import App, ComposeResult
 from textual.screen import Screen
 from textual.widgets import (
-    Header, Footer, Static, Button, Input, Label, Switch,
-    RichLog, ListView, ListItem
+    Header, Footer, Static, Button, Input, Label, 
+    ListView, ListItem, RichLog, TextArea
 )
-from textual.containers import Horizontal, Vertical, Container
+from textual.containers import Horizontal, Vertical, Container, Grid
 from textual.reactive import reactive
+from textual.binding import Binding
 from textual import work
 
 # ============ 数据模型 ============
 
 @dataclass
-class EmployeeConfig:
-    """员工配置"""
-    base_url: str = ""
-    token: str = ""
-    session_key: str = "default"
-    timeout: int = 120
-    enabled: bool = True
-
-@dataclass
 class Employee:
-    """员工"""
+    """OpenClaw 员工"""
     id: str
     name: str
     role: str = "OpenClaw 员工"
-    status: str = "offline"
+    status: str = "offline"  # offline, idle, working
     current_task: str = ""
     unread_count: int = 0
-    config: EmployeeConfig = field(default_factory=EmployeeConfig)
-    last_error: str = ""
+    avatar: str = "🦞"
+    enabled: bool = True
+    config: Dict = field(default_factory=dict)
 
-# ============ 数据存储 ============
 
-class DataStore:
-    """本地数据存储"""
+class EmployeeStore:
+    """员工数据管理"""
     
     def __init__(self):
-        # 使用项目目录下的 data/ 文件夹
-        self.data_dir = Path(__file__).parent / "data"
-        self.data_dir.mkdir(exist_ok=True)
-        self.identities_dir = self.data_dir / "identities"
-        self.identities_dir.mkdir(exist_ok=True)
-        self.employees_file = self.data_dir / "employees.json"
+        self.data_file = Path(__file__).parent / "data" / "employees.json"
+        self.data_file.parent.mkdir(exist_ok=True)
         self.employees: Dict[str, Employee] = {}
         self.load()
     
     def load(self):
-        """加载数据"""
-        if self.employees_file.exists():
+        """加载员工数据"""
+        if self.data_file.exists():
             try:
-                data = json.loads(self.employees_file.read_text())
+                data = json.loads(self.data_file.read_text(encoding='utf-8'))
                 for emp_id, emp_data in data.items():
-                    config = EmployeeConfig(**emp_data.pop("config", {}))
-                    self.employees[emp_id] = Employee(config=config, **emp_data)
+                    self.employees[emp_id] = Employee(**emp_data)
             except Exception as e:
                 print(f"加载数据失败: {e}")
         
-        # 如果没有员工，创建示例
         if not self.employees:
-            self.create_default_employees()
+            self.create_defaults()
     
     def save(self):
-        """保存数据"""
-        data = {}
-        for emp_id, emp in self.employees.items():
-            emp_dict = asdict(emp)
-            emp_dict["config"] = asdict(emp.config)
-            data[emp_id] = emp_dict
-        self.employees_file.write_text(json.dumps(data, indent=2, ensure_ascii=False))
+        """保存员工数据"""
+        data = {emp_id: asdict(emp) for emp_id, emp in self.employees.items()}
+        self.data_file.write_text(
+            json.dumps(data, indent=2, ensure_ascii=False), 
+            encoding='utf-8'
+        )
     
-    def create_default_employees(self):
+    def create_defaults(self):
         """创建默认员工"""
-        self.employees["emp-001"] = Employee(
-            id="emp-001",
-            name="Alice",
-            role="代码审查专家",
-            config=EmployeeConfig(
-                base_url="wss://gateway.openclaw.example.com",
-                token="your_token_here",
-                session_key="alice"
-            )
-        )
-        self.employees["emp-002"] = Employee(
-            id="emp-002",
-            name="Bob",
-            role="文档生成助手",
-            config=EmployeeConfig(
-                base_url="wss://gateway.openclaw.example.com",
-                token="your_token_here",
-                session_key="bob"
-            )
-        )
+        self.employees = {
+            "emp-001": Employee(
+                id="emp-001",
+                name="Alice",
+                role="代码审查专家",
+                config={"base_url": "", "token": "", "session": "alice"}
+            ),
+            "emp-002": Employee(
+                id="emp-002",
+                name="Bob", 
+                role="文档生成助手",
+                config={"base_url": "", "token": "", "session": "bob"}
+            ),
+            "emp-003": Employee(
+                id="emp-003",
+                name="Carol",
+                role="测试工程师",
+                config={"base_url": "", "token": "", "session": "carol"}
+            ),
+        }
         self.save()
     
-    def add_employee(self, emp: Employee):
+    def add(self, emp: Employee):
         """添加员工"""
         self.employees[emp.id] = emp
         self.save()
     
-    def delete_employee(self, emp_id: str):
+    def delete(self, emp_id: str):
         """删除员工"""
         if emp_id in self.employees:
             del self.employees[emp_id]
             self.save()
     
-    def update_employee(self, emp_id: str, **kwargs):
+    def update(self, emp_id: str, **kwargs):
         """更新员工"""
         if emp_id in self.employees:
             emp = self.employees[emp_id]
@@ -143,249 +113,65 @@ class DataStore:
                     setattr(emp, key, value)
             self.save()
 
-# ============ OpenClaw 连接 ============
 
-class OpenClawConnection:
-    """OpenClaw WebSocket 连接"""
-    
-    def __init__(self, employee: Employee, on_message=None, on_status=None):
-        self.employee = employee
-        self.on_message = on_message
-        self.on_status = on_status
-        self.ws: Optional[aiohttp.ClientWebSocketResponse] = None
-        self.session: Optional[aiohttp.ClientSession] = None
-        self.connected = False
-        self._device_id = ""
-        self._device_private_key: Optional[Ed25519PrivateKey] = None
-        self._nonce = ""
-    
-    def _load_or_create_identity(self):
-        """加载或创建设备身份"""
-        identity_file = Path(__file__).parent / "data" / "identities" / f"{self.employee.id}.json"
-        
-        if identity_file.exists():
-            try:
-                data = json.loads(identity_file.read_text())
-                pem = data.get("private_key_pem", "")
-                if pem:
-                    key = serialization.load_pem_private_key(pem.encode(), password=None)
-                    if isinstance(key, Ed25519PrivateKey):
-                        self._device_private_key = key
-                        pub_raw = key.public_key().public_bytes(
-                            encoding=serialization.Encoding.Raw,
-                            format=serialization.PublicFormat.Raw
-                        )
-                        self._device_id = hashlib.sha256(pub_raw).hexdigest()
-                        return
-            except Exception as e:
-                print(f"身份加载失败: {e}")
-        
-        # 创建新身份
-        key = Ed25519PrivateKey.generate()
-        pub_raw = key.public_key().public_bytes(
-            encoding=serialization.Encoding.Raw,
-            format=serialization.PublicFormat.Raw
-        )
-        self._device_id = hashlib.sha256(pub_raw).hexdigest()
-        self._device_private_key = key
-        
-        pem = key.private_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PrivateFormat.PKCS8,
-            encryption_algorithm=serialization.NoEncryption()
-        ).decode()
-        
-        identity_file.write_text(json.dumps({"private_key_pem": pem}, indent=2))
-    
-    async def connect(self):
-        """连接 OpenClaw"""
-        if not self.employee.config.enabled or not self.employee.config.base_url:
-            return
-        
-        self._load_or_create_identity()
-        
-        parsed = urlparse(self.employee.config.base_url)
-        scheme = "wss" if parsed.scheme == "https" else "ws"
-        ws_url = f"{scheme}://{parsed.netloc}"
-        
-        headers = {"Origin": f"{parsed.scheme}://{parsed.netloc}"} if parsed.scheme else {}
-        
-        try:
-            self.session = aiohttp.ClientSession()
-            self.ws = await self.session.ws_connect(ws_url, headers=headers, heartbeat=30)
-            
-            # 等待 challenge
-            async for msg in self.ws:
-                if msg.type == aiohttp.WSMsgType.TEXT:
-                    data = json.loads(msg.data)
-                    if data.get("event") == "connect.challenge":
-                        self._nonce = data.get("payload", {}).get("nonce", "")
-                        await self._send_handshake()
-                        self.connected = True
-                        self._update_status("idle", "")
-                        break
-            
-            # 启动接收循环
-            await self._receive_loop()
-            
-        except Exception as e:
-            self._update_status("offline", str(e))
-    
-    async def _send_handshake(self):
-        """发送握手"""
-        if not self._device_private_key:
-            return
-        
-        signed_at = int(time.time() * 1000)
-        payload = "|".join([
-            "v2", self._device_id, f"studio-{self.employee.id}", "ui", "operator",
-            "operator.chat", str(signed_at), self.employee.config.token or "", self._nonce
-        ])
-        
-        signature = self._device_private_key.sign(payload.encode())
-        sig_b64 = base64.urlsafe_b64encode(signature).decode().rstrip("=")
-        pub_b64 = base64.urlsafe_b64encode(
-            self._device_private_key.public_key().public_bytes(
-                encoding=serialization.Encoding.Raw,
-                format=serialization.PublicFormat.Raw
-            )
-        ).decode().rstrip("=")
-        
-        frame = {
-            "type": "req",
-            "id": str(uuid.uuid4()),
-            "method": "connect",
-            "params": {
-                "minProtocol": 3,
-                "maxProtocol": 3,
-                "client": {
-                    "id": f"studio-{self.employee.id}",
-                    "version": "0.1.0",
-                    "platform": "openclaw-studio",
-                    "mode": "ui"
-                },
-                "role": "operator",
-                "scopes": ["operator.chat"],
-                "device": {
-                    "id": self._device_id,
-                    "publicKey": pub_b64,
-                    "signature": sig_b64,
-                    "signedAt": signed_at,
-                    "nonce": self._nonce
-                },
-                **({"auth": {"token": self.employee.config.token}} if self.employee.config.token else {})
-            }
-        }
-        await self.ws.send_str(json.dumps(frame))
-    
-    async def _receive_loop(self):
-        """接收消息循环"""
-        try:
-            async for msg in self.ws:
-                if msg.type == aiohttp.WSMsgType.TEXT:
-                    await self._handle_message(json.loads(msg.data))
-        except Exception as e:
-            print(f"接收错误: {e}")
-        finally:
-            self.connected = False
-            self._update_status("offline", "连接断开")
-    
-    async def _handle_message(self, data: dict):
-        """处理消息"""
-        msg_type = data.get("type")
-        
-        if msg_type == "event" and data.get("event") == "chat":
-            payload = data.get("payload", {})
-            if payload.get("state") == "final":
-                text = self._extract_text(payload.get("message"))
-                if self.on_message:
-                    self.on_message(text)
-    
-    def _extract_text(self, message) -> str:
-        """提取文本"""
-        if isinstance(message, str):
-            return message
-        if isinstance(message, dict):
-            return message.get("content", "") or message.get("text", "")
-        return ""
-    
-    async def send_message(self, content: str) -> str:
-        """发送消息"""
-        if not self.connected:
-            return "❌ 未连接"
-        
-        try:
-            self._update_status("working", "处理中...")
-            
-            frame = {
-                "type": "req",
-                "id": str(uuid.uuid4()),
-                "method": "chat.send",
-                "params": {
-                    "sessionKey": f"agent:main:{self.employee.config.session_key}",
-                    "message": content,
-                    "deliver": False
-                }
-            }
-            await self.ws.send_str(json.dumps(frame))
-            
-            # 等待回复（简化版）
-            return "✅ 消息已发送"
-        except Exception as e:
-            return f"❌ 发送失败: {e}"
-        finally:
-            self._update_status("idle", "")
-    
-    def _update_status(self, status: str, task: str):
-        """更新状态"""
-        self.employee.status = status
-        self.employee.current_task = task
-        if self.on_status:
-            self.on_status(status, task)
-    
-    async def close(self):
-        """关闭连接"""
-        if self.ws:
-            await self.ws.close()
-        if self.session:
-            await self.session.close()
-        self.connected = False
+# ============ 组件 ============
 
-# ============ TUI 界面 ============
-
-class EmployeeCard(Vertical):
-    """员工卡片"""
+class EmployeeCard(Container):
+    """员工卡片组件"""
     
     DEFAULT_CSS = """
     EmployeeCard {
-        width: 28;
-        height: 12;
+        width: 24;
+        height: 11;
         background: $surface;
         border: solid $primary-darken-2;
         padding: 0;
         margin: 0 1 1 0;
-
     }
     EmployeeCard:hover {
         background: $surface-lighten-1;
         border: solid $primary;
     }
-    EmployeeCard:focus { border: solid $accent; }
+    EmployeeCard:focus {
+        border: solid $accent;
+        background: $primary-darken-3;
+    }
+    EmployeeCard.selected {
+        border: solid $success;
+        background: $success-darken-3;
+    }
     EmployeeCard .header {
-        height: 3;
+        height: 2;
         background: $primary-darken-3;
         content-align: center middle;
+        text-style: bold;
     }
     EmployeeCard .body {
         height: 6;
-        padding: 0 1;
         content-align: center middle;
+    }
+    EmployeeCard .avatar {
+        text-style: bold;
+        text-align: center;
+    }
+    EmployeeCard .name {
+        text-style: bold;
+        text-align: center;
+        color: $text;
+    }
+    EmployeeCard .role {
+        text-align: center;
+        color: $text-muted;
+        text-style: italic;
     }
     EmployeeCard .footer {
         height: 3;
         content-align: center middle;
         color: $text-muted;
     }
+    EmployeeCard .status-idle { color: $success; }
+    EmployeeCard .status-working { color: $warning; }
+    EmployeeCard .status-offline { color: $error; }
     """
     
     def __init__(self, employee: Employee, **kwargs):
@@ -394,198 +180,359 @@ class EmployeeCard(Vertical):
         self.can_focus = True
     
     def compose(self):
-        status_emoji = {"idle": "🟢", "working": "🟡", "offline": "⚫", "error": "🔴"}
-        status_text = {"idle": "空闲", "working": "工作中", "offline": "离线", "error": "错误"}
-        
         emp = self.employee
-        se = status_emoji.get(emp.status, "⚪")
-        st = status_text.get(emp.status, "未知")
         
-        header = f"{se} {st}"
+        # 状态指示
+        status_emoji = {"idle": "🟢", "working": "🟡", "offline": "⚫"}.get(emp.status, "⚪")
+        status_text = {"idle": "空闲", "working": "工作中", "offline": "离线"}.get(emp.status, "未知")
+        
+        # 头部：状态 + 未读消息
+        header_text = f"{status_emoji} {status_text}"
         if emp.unread_count > 0:
-            header += f" 💬{emp.unread_count}"
+            header_text += f"  💬{emp.unread_count}"
         
-        yield Static(header, classes="header")
+        yield Static(header_text, classes=f"header status-{emp.status}")
         
+        # 主体：头像 + 姓名 + 角色
         with Vertical(classes="body"):
-            yield Static("🦞", classes="emoji-icon")
-            yield Static(emp.name, classes="name-text")
-            yield Static(emp.role, classes="role-text")
+            yield Static(emp.avatar, classes="avatar")
+            yield Static(emp.name, classes="name")
+            yield Static(emp.role, classes="role")
         
+        # 底部：当前任务
         task = emp.current_task or "无任务"
-        if len(task) > 14:
-            task = task[:14] + "..."
+        if len(task) > 12:
+            task = task[:12] + "..."
         yield Static(f"📋 {task}", classes="footer")
     
     def on_click(self):
-        self.app.open_chat(self.employee)
+        """鼠标点击"""
+        self.app.select_employee(self.employee)
     
     def on_key(self, event):
+        """键盘事件"""
         if event.key == "enter":
-            self.app.open_chat(self.employee)
+            self.app.enter_chat(self.employee)
         elif event.key == "space":
-            self.app.show_employee_detail(self.employee)
+            self.app.show_employee_menu(self.employee)
 
 
-class MainScreen(Screen):
-    """主屏幕"""
+class EmployeeDetailModal(Container):
+    """员工详情弹窗"""
+    
+    DEFAULT_CSS = """
+    EmployeeDetailModal {
+        width: 60;
+        height: auto;
+        background: $surface;
+        border: solid $accent;
+        padding: 1 2;
+    }
+    EmployeeDetailModal .title {
+        text-style: bold;
+        text-align: center;
+        height: 3;
+        border-bottom: solid $primary-darken-2;
+    }
+    EmployeeDetailModal .info-row {
+        height: 2;
+        margin: 1 0;
+    }
+    EmployeeDetailModal .label {
+        color: $text-muted;
+        width: 15;
+    }
+    EmployeeDetailModal .value {
+        color: $text;
+    }
+    EmployeeDetailModal .buttons {
+        height: 3;
+        margin-top: 1;
+        align: center middle;
+    }
+    EmployeeDetailModal .buttons Button {
+        margin: 0 1;
+    }
+    """
+    
+    def __init__(self, employee: Employee, **kwargs):
+        super().__init__(**kwargs)
+        self.employee = employee
+    
+    def compose(self):
+        emp = self.employee
+        
+        yield Static(f"🦞 {emp.name} - 员工详情", classes="title")
+        
+        with Grid(classes="info-grid"):
+            yield Label("ID:", classes="label"); yield Label(emp.id, classes="value")
+            yield Label("姓名:", classes="label"); yield Label(emp.name, classes="value")
+            yield Label("角色:", classes="label"); yield Label(emp.role, classes="value")
+            yield Label("状态:", classes="label"); yield Label(emp.status, classes="value")
+            yield Label("当前任务:", classes="label"); yield Label(emp.current_task or "无", classes="value")
+            yield Label("未读消息:", classes="label"); yield Label(str(emp.unread_count), classes="value")
+        
+        with Horizontal(classes="buttons"):
+            yield Button("💬 对话", id="chat", variant="primary")
+            yield Button("✏️ 编辑", id="edit", variant="default")
+            yield Button("🗑️ 删除", id="delete", variant="error")
+            yield Button("← 返回", id="back", variant="default")
+    
+    def on_button_pressed(self, event):
+        btn_id = event.button.id
+        if btn_id == "chat":
+            self.app.enter_chat(self.employee)
+        elif btn_id == "edit":
+            self.app.edit_employee(self.employee)
+        elif btn_id == "delete":
+            self.app.delete_employee(self.employee)
+        elif btn_id == "back":
+            self.app.dismiss_modal()
+
+
+# ============ 屏幕 ============
+
+class StudioScreen(Screen):
+    """工作室主界面"""
     
     BINDINGS = [
-        ("q", "quit", "退出"),
-        ("a", "add_employee", "添加员工"),
-        ("r", "refresh", "刷新"),
+        Binding("up", "nav_up", "上", show=False),
+        Binding("down", "nav_down", "下", show=False),
+        Binding("left", "nav_left", "左", show=False),
+        Binding("right", "nav_right", "右", show=False),
+        Binding("enter", "action_enter", "确认", show=False),
+        Binding("escape", "action_back", "返回", show=False),
+        Binding("q", "action_quit", "退出", show=True),
+        Binding("a", "action_add", "添加员工", show=True),
+        Binding("?", "action_help", "帮助", show=True),
     ]
     
     employees = reactive(list)
+    selected_index = reactive(0)
     
-    def __init__(self, store: DataStore, **kwargs):
+    def __init__(self, store: EmployeeStore, **kwargs):
         super().__init__(**kwargs)
         self.store = store
         self.employees = list(store.employees.values())
-        self.connections: Dict[str, OpenClawConnection] = {}
+        self.cards: List[EmployeeCard] = []
     
     def compose(self):
         yield Header(show_clock=True)
         
         with Vertical():
+            # 工具栏
             with Horizontal(classes="toolbar"):
-                yield Button("🔄 刷新", id="refresh", variant="primary")
-                yield Button("➕ 添加员工", id="add", variant="success")
+                yield Button("➕ 添加员工", id="add-btn", variant="success")
+                yield Button("🔄 刷新", id="refresh-btn", variant="primary")
+                yield Button("❓ 帮助", id="help-btn", variant="default")
+                yield Static("", classes="spacer")
+                yield Static("🦞 OpenClaw Studio", classes="brand")
             
-            yield Static("🦞 OpenClaw Studio - 点击卡片进入对话", classes="title")
+            # 标题提示
+            yield Static(
+                "↑↓←→ 导航 │ Enter 进入对话 │ Space 菜单 │ 鼠标点击选择",
+                classes="hint"
+            )
             
             # 员工网格
-            with Horizontal(id="employee-grid"):
+            with Grid(id="employee-grid", classes="grid"):
                 for emp in self.employees:
-                    yield EmployeeCard(emp)
+                    card = EmployeeCard(emp)
+                    self.cards.append(card)
+                    yield card
+            
+            # 状态栏
+            with Horizontal(classes="statusbar"):
+                yield Static("🟢 就绪", id="status")
+                yield Static("", classes="spacer")
+                total = len(self.employees)
+                online = sum(1 for e in self.employees if e.status != "offline")
+                yield Static(f"🦞 {online}/{total} 在线", id="stats")
         
         yield Footer()
     
     DEFAULT_CSS = """
-    MainScreen .toolbar {
+    StudioScreen .toolbar {
         height: 3;
         background: $surface-darken-1;
         padding: 0 2;
         align: left middle;
     }
-    MainScreen .toolbar Button {
+    StudioScreen .toolbar Button {
         margin-right: 1;
     }
-    MainScreen .title {
-        height: 2;
-        padding: 0 2;
-        text-style: bold;
-        color: $text-muted;
+    StudioScreen .toolbar .spacer {
+        width: 1fr;
     }
-    MainScreen #employee-grid {
+    StudioScreen .toolbar .brand {
+        text-style: bold;
+        color: $accent;
+    }
+    StudioScreen .hint {
+        height: 1;
+        padding: 0 2;
+        color: $text-muted;
+        text-style: dim;
+        text-align: center;
+    }
+    StudioScreen .grid {
         height: 1fr;
         padding: 1 2;
+        grid-size: 4;
+        grid-columns: 1fr 1fr 1fr 1fr;
+        grid-gutter: 1;
+    }
+    StudioScreen .statusbar {
+        height: 1;
+        background: $primary-darken-3;
+        padding: 0 2;
+        align: left middle;
+    }
+    StudioScreen .statusbar .spacer {
+        width: 1fr;
     }
     """
     
     def on_mount(self):
-        """挂载后连接所有启用的员工"""
-        for emp in self.employees:
-            if emp.config.enabled:
-                self.start_connection(emp)
+        """挂载后聚焦第一个卡片"""
+        if self.cards:
+            self.cards[0].focus()
     
-    @work
-    async def start_connection(self, emp: Employee):
-        """启动连接"""
-        try:
-            conn = OpenClawConnection(
-                emp,
-                on_message=lambda text, e=emp: self.handle_message(e, text),
-                on_status=lambda s, t, e=emp: self.handle_status(e, s, t)
-            )
-            self.connections[emp.id] = conn
-            await conn.connect()
-        except Exception as e:
-            print(f"[MainScreen] 连接 {emp.name} 失败: {e}")
-            emp.status = "offline"
-            emp.last_error = str(e)
-            self.refresh_employee(emp)
+    def action_nav_up(self):
+        """向上导航"""
+        self.move_selection(-4)  # 每行4个
     
-    def handle_message(self, emp: Employee, text: str):
-        """处理收到的消息"""
-        emp.unread_count += 1
-        self.refresh_employee(emp)
+    def action_nav_down(self):
+        """向下导航"""
+        self.move_selection(4)
     
-    def handle_status(self, emp: Employee, status: str, task: str):
-        """处理状态变化"""
-        emp.status = status
-        emp.current_task = task
-        self.refresh_employee(emp)
+    def action_nav_left(self):
+        """向左导航"""
+        self.move_selection(-1)
     
-    def refresh_employee(self, emp: Employee):
-        """刷新员工显示"""
-        for card in self.query(EmployeeCard):
-            if card.employee.id == emp.id:
-                card.refresh()
+    def action_nav_right(self):
+        """向右导航"""
+        self.move_selection(1)
+    
+    def move_selection(self, delta: int):
+        """移动选择"""
+        if not self.cards:
+            return
+        
+        new_index = self.selected_index + delta
+        new_index = max(0, min(new_index, len(self.cards) - 1))
+        
+        if new_index != self.selected_index:
+            self.selected_index = new_index
+            self.cards[new_index].focus()
+    
+    def action_enter(self):
+        """确认键 - 进入对话"""
+        if self.cards and 0 <= self.selected_index < len(self.cards):
+            emp = self.cards[self.selected_index].employee
+            self.app.enter_chat(emp)
+    
+    def action_back(self):
+        """返回键"""
+        self.app.action_quit()
+    
+    def action_quit(self):
+        """退出"""
+        self.app.exit()
+    
+    def action_add(self):
+        """添加员工"""
+        self.app.push_screen(AddEmployeeScreen(self.store))
+    
+    def action_help(self):
+        """显示帮助"""
+        help_text = """
+📖 操作指南
+
+🖱️ 鼠标:
+  点击卡片     选中员工
+  双击卡片     进入对话
+
+⌨️ 键盘:
+  ↑↓←→         导航选择
+  Enter        进入对话
+  Space        打开菜单
+  a            添加员工
+  q            退出
+
+📊 图标说明:
+  🦞 员工      💬 未读消息
+  🟢 空闲      🟡 工作中
+  ⚫ 离线      📋 当前任务
+"""
+        self.notify(help_text, title="帮助", timeout=15)
     
     def on_button_pressed(self, event):
-        if event.button.id == "refresh":
+        """按钮点击"""
+        btn_id = event.button.id
+        if btn_id == "add-btn":
+            self.action_add()
+        elif btn_id == "refresh-btn":
             self.refresh_employees()
-        elif event.button.id == "add":
-            self.action_add_employee()
+        elif btn_id == "help-btn":
+            self.action_help()
     
     def refresh_employees(self):
+        """刷新员工列表"""
+        self.store.load()
         self.employees = list(self.store.employees.values())
-        grid = self.query_one("#employee-grid", Horizontal)
+        
+        # 重新渲染
+        grid = self.query_one("#employee-grid", Grid)
         grid.remove_children()
+        self.cards = []
+        
         for emp in self.employees:
-            grid.mount(EmployeeCard(emp))
-    
-    def action_add_employee(self):
-        """添加员工"""
-        self.notify("添加员工功能开发中...\n请直接编辑 ~/.openclaw_studio/employees.json")
-    
-    def open_chat(self, employee: Employee):
-        """打开聊天"""
-        self.push_screen(ChatScreen(employee, self.connections.get(employee.id)))
-    
-    def show_employee_detail(self, employee: Employee):
-        """显示详情"""
-        config = employee.config
-        text = f"""
-员工: {employee.name}
-角色: {employee.role}
-状态: {employee.status}
-
-OpenClaw 配置:
-  Base URL: {config.base_url}
-  Token: {config.token[:10]}... if config.token else "未设置"
-  Session: {config.session_key}
-  Timeout: {config.timeout}s
-  Enabled: {config.enabled}
-        """
-        self.notify(text, title="员工详情", timeout=10)
+            card = EmployeeCard(emp)
+            self.cards.append(card)
+            grid.mount(card)
+        
+        # 更新状态
+        total = len(self.employees)
+        online = sum(1 for e in self.employees if e.status != "offline")
+        self.query_one("#stats", Static).update(f"🦞 {online}/{total} 在线")
+        
+        self.notify("🔄 已刷新", timeout=2)
 
 
 class ChatScreen(Screen):
-    """聊天屏幕"""
+    """对话界面"""
     
-    BINDINGS = [("escape", "go_back", "返回")]
+    BINDINGS = [
+        Binding("escape", "action_back", "返回", show=True),
+        Binding("enter", "action_send", "发送", show=False),
+    ]
     
-    def __init__(self, employee: Employee, connection: Optional[OpenClawConnection], **kwargs):
+    def __init__(self, employee: Employee, store: EmployeeStore, **kwargs):
         super().__init__(**kwargs)
         self.employee = employee
-        self.connection = connection
-        self.messages: List[str] = []
+        self.store = store
+        self.messages: List[Dict] = []
     
     def compose(self):
         yield Header(show_clock=True)
         
         with Vertical():
+            # 聊天头部
             with Horizontal(classes="chat-header"):
-                yield Button("← 返回", id="back", variant="default")
-                yield Static(f"🦞 与 {self.employee.name} 对话")
+                yield Button("← 返回工作室", id="back-btn", variant="default")
+                yield Static(f"🦞 {self.employee.name} ({self.employee.role})", classes="chat-title")
             
-            yield RichLog(id="messages", classes="messages")
+            # 消息区域
+            yield RichLog(id="messages", classes="messages", wrap=True)
             
+            # 输入区域
             with Horizontal(classes="input-area"):
-                yield Input(placeholder="输入消息...", id="message-input")
-                yield Button("发送", id="send", variant="primary")
+                yield Input(
+                    placeholder="💭 输入消息，Enter 发送...",
+                    id="message-input"
+                )
+                yield Button("📤 发送", id="send-btn", variant="primary")
         
         yield Footer()
     
@@ -593,21 +540,22 @@ class ChatScreen(Screen):
     ChatScreen .chat-header {
         height: 3;
         background: $primary-darken-3;
-        padding: 0 1;
+        padding: 0 2;
         align: left middle;
     }
-    ChatScreen .chat-header Static {
+    ChatScreen .chat-title {
         margin-left: 2;
         text-style: bold;
     }
     ChatScreen .messages {
         height: 1fr;
         background: $surface-darken-1;
-        padding: 1;
+        padding: 1 2;
+        border-bottom: solid $primary-darken-2;
     }
     ChatScreen .input-area {
         height: 3;
-        padding: 0 1;
+        padding: 0 2;
         align: left middle;
     }
     ChatScreen .input-area Input {
@@ -619,81 +567,231 @@ class ChatScreen(Screen):
     """
     
     def on_mount(self):
+        """挂载后"""
+        self.add_message("system", f"🦞 与 {self.employee.name} 的对话已开始")
+        self.add_message("system", "💡 提示: 输入消息按 Enter 发送，Esc 返回工作室")
         self.query_one("#message-input", Input).focus()
-        self.add_message("系统", f"与 {self.employee.name} 的对话已开始")
-        if not self.connection or not self.connection.connected:
-            self.add_message("系统", "⚠️ 未连接到 OpenClaw")
     
     def add_message(self, sender: str, content: str):
         """添加消息"""
         log = self.query_one("#messages", RichLog)
         timestamp = datetime.now().strftime("%H:%M")
-        log.write(f"[{timestamp}] {sender}: {content}")
+        
+        if sender == "system":
+            log.write(f"[{timestamp}] 💬 {content}")
+        elif sender == "user":
+            log.write(f"[{timestamp}] 🧑 你: {content}")
+        else:
+            log.write(f"[{timestamp}] 🦞 {self.employee.name}: {content}")
+        
+        log.write("")
     
     def on_button_pressed(self, event):
-        if event.button.id == "back":
-            self.action_go_back()
-        elif event.button.id == "send":
-            self.send_message()
+        """按钮点击"""
+        if event.button.id == "back-btn":
+            self.action_back()
+        elif event.button.id == "send-btn":
+            self.action_send()
     
     def on_input_submitted(self, event):
+        """输入提交"""
         if event.input.id == "message-input":
-            self.send_message()
+            self.action_send()
     
-    @work
-    async def send_message(self):
+    def action_send(self):
         """发送消息"""
         input_widget = self.query_one("#message-input", Input)
         content = input_widget.value.strip()
+        
         if not content:
             return
         
         input_widget.value = ""
-        self.add_message("你", content)
+        self.add_message("user", content)
         
-        if self.connection and self.connection.connected:
-            result = await self.connection.send_message(content)
-            self.add_message("系统", result)
-        else:
-            self.add_message("系统", "❌ 未连接，无法发送")
+        # 模拟回复（实际应发送到 OpenClaw）
+        self.add_message("employee", f"收到: {content[:20]}...")
     
-    def action_go_back(self):
+    def action_back(self):
+        """返回"""
         self.app.pop_screen()
 
 
+class AddEmployeeScreen(Screen):
+    """添加员工界面"""
+    
+    BINDINGS = [
+        Binding("escape", "action_back", "返回", show=True),
+    ]
+    
+    def __init__(self, store: EmployeeStore, **kwargs):
+        super().__init__(**kwargs)
+        self.store = store
+    
+    def compose(self):
+        yield Header(show_clock=True)
+        
+        with Container(classes="form-container"):
+            yield Static("➕ 添加新员工", classes="form-title")
+            
+            with Vertical(classes="form"):
+                yield Label("基本信息")
+                yield Input(placeholder="员工名称 *", id="name")
+                yield Input(placeholder="角色（如：代码审查专家）", id="role", value="OpenClaw 员工")
+                
+                yield Label("OpenClaw 配置 (可选)")
+                yield Input(placeholder="Gateway URL", id="base_url")
+                yield Input(placeholder="Token", id="token", password=True)
+                
+                with Horizontal(classes="form-buttons"):
+                    yield Button("← 返回", id="back-btn", variant="default")
+                    yield Button("✅ 创建", id="create-btn", variant="success")
+        
+        yield Footer()
+    
+    DEFAULT_CSS = """
+    AddEmployeeScreen .form-container {
+        width: 60;
+        height: auto;
+        margin: 2 auto;
+        background: $surface;
+        border: solid $primary;
+        padding: 1 2;
+    }
+    AddEmployeeScreen .form-title {
+        text-style: bold;
+        text-align: center;
+        height: 3;
+        border-bottom: solid $primary-darken-2;
+    }
+    AddEmployeeScreen .form {
+        padding: 1 0;
+    }
+    AddEmployeeScreen .form Label {
+        margin-top: 1;
+        color: $text-muted;
+    }
+    AddEmployeeScreen .form Input {
+        margin: 0 0 1 0;
+    }
+    AddEmployeeScreen .form-buttons {
+        height: 3;
+        margin-top: 1;
+        align: center middle;
+    }
+    AddEmployeeScreen .form-buttons Button {
+        margin: 0 1;
+    }
+    """
+    
+    def on_button_pressed(self, event):
+        """按钮点击"""
+        btn_id = event.button.id
+        if btn_id == "back-btn":
+            self.action_back()
+        elif btn_id == "create-btn":
+            self.create_employee()
+    
+    def create_employee(self):
+        """创建员工"""
+        name = self.query_one("#name", Input).value.strip()
+        role = self.query_one("#role", Input).value.strip()
+        base_url = self.query_one("#base_url", Input).value.strip()
+        token = self.query_one("#token", Input).value.strip()
+        
+        if not name:
+            self.notify("❌ 请输入员工名称", severity="error", timeout=3)
+            return
+        
+        emp_id = f"emp-{uuid.uuid4().hex[:6]}"
+        emp = Employee(
+            id=emp_id,
+            name=name,
+            role=role,
+            config={"base_url": base_url, "token": token, "session": name.lower()}
+        )
+        
+        self.store.add(emp)
+        self.notify(f"✅ 员工 '{name}' 创建成功!", timeout=3)
+        self.app.pop_screen()
+        
+        # 刷新工作室界面
+        if isinstance(self.app.screen, StudioScreen):
+            self.app.screen.refresh_employees()
+    
+    def action_back(self):
+        """返回"""
+        self.app.pop_screen()
+
+
+# ============ 主应用 ============
+
 class OpenClawStudioApp(App):
-    """主应用"""
+    """OpenClaw Studio 主应用"""
     
     CSS_PATH = None
     mouse_enabled = True
     
     def __init__(self):
         super().__init__()
-        self.store = DataStore()
+        self.store = EmployeeStore()
     
     def compose(self) -> ComposeResult:
-        yield MainScreen(self.store)
+        yield StudioScreen(self.store)
     
-    def open_chat(self, employee: Employee):
-        """打开聊天（供 EmployeeCard 调用）"""
+    def select_employee(self, employee: Employee):
+        """选中员工"""
+        # 更新选中状态
         screen = self.screen
-        if isinstance(screen, MainScreen):
-            screen.open_chat(employee)
+        if isinstance(screen, StudioScreen):
+            for i, card in enumerate(screen.cards):
+                if card.employee.id == employee.id:
+                    screen.selected_index = i
+                    card.focus()
+                    break
     
-    def show_employee_detail(self, employee: Employee):
-        """显示详情（供 EmployeeCard 调用）"""
+    def enter_chat(self, employee: Employee):
+        """进入对话"""
+        self.push_screen(ChatScreen(employee, self.store))
+    
+    def show_employee_menu(self, employee: Employee):
+        """显示员工菜单"""
+        # 简单实现：直接显示详情弹窗
+        self.notify(
+            f"🦞 {employee.name}\n"
+            f"角色: {employee.role}\n"
+            f"状态: {employee.status}\n"
+            f"任务: {employee.current_task or '无'}\n\n"
+            f"按 Enter 进入对话",
+            title="员工详情",
+            timeout=5
+        )
+    
+    def edit_employee(self, employee: Employee):
+        """编辑员工"""
+        self.notify("✏️ 编辑功能开发中...", timeout=2)
+    
+    def delete_employee(self, employee: Employee):
+        """删除员工"""
+        self.store.delete(employee.id)
+        self.notify(f"🗑️ 员工 '{employee.name}' 已删除", timeout=3)
+        
+        # 刷新界面
         screen = self.screen
-        if isinstance(screen, MainScreen):
-            screen.show_employee_detail(employee)
+        if isinstance(screen, StudioScreen):
+            screen.refresh_employees()
+    
+    def dismiss_modal(self):
+        """关闭弹窗"""
+        pass  # 简单实现
 
 
 def main():
+    """入口"""
     print("""
 ╔═══════════════════════════════════════════════════════════╗
 ║                                                           ║
-║   🦞 OpenClaw TUI Studio - 简洁版                        ║
-║                                                           ║
-║   配置文件: ~/.openclaw_studio/employees.json            ║
+║   🦞 OpenClaw TUI Studio                                  ║
 ║                                                           ║
 ╚═══════════════════════════════════════════════════════════╝
 """)
@@ -701,16 +799,14 @@ def main():
     # 检查依赖
     try:
         import textual
-        import aiohttp
-        import cryptography
     except ImportError:
-        print("❌ 缺少依赖，请运行:")
-        print("   pip install textual aiohttp cryptography")
-        sys.exit(1)
+        print("❌ 缺少依赖，请运行: pip3 install textual")
+        return 1
     
     app = OpenClawStudioApp()
     app.run()
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    exit(main())

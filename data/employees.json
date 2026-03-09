@@ -6,13 +6,12 @@
     "status": "offline",
     "current_task": "",
     "unread_count": 0,
-    "last_error": "",
+    "avatar": "🦞",
+    "enabled": true,
     "config": {
-      "base_url": "wss://gateway.openclaw.example.com",
-      "token": "your_token_here",
-      "session_key": "alice",
-      "timeout": 120,
-      "enabled": false
+      "base_url": "",
+      "token": "",
+      "session": "alice"
     }
   },
   "emp-002": {
@@ -22,13 +21,27 @@
     "status": "offline",
     "current_task": "",
     "unread_count": 0,
-    "last_error": "",
+    "avatar": "🦞",
+    "enabled": true,
     "config": {
-      "base_url": "wss://gateway.openclaw.example.com",
-      "token": "your_token_here",
-      "session_key": "bob",
-      "timeout": 120,
-      "enabled": false
+      "base_url": "",
+      "token": "",
+      "session": "bob"
+    }
+  },
+  "emp-003": {
+    "id": "emp-003",
+    "name": "Carol",
+    "role": "测试工程师",
+    "status": "offline",
+    "current_task": "",
+    "unread_count": 0,
+    "avatar": "🦞",
+    "enabled": true,
+    "config": {
+      "base_url": "",
+      "token": "",
+      "session": "carol"
     }
   }
 }
