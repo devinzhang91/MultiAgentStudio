@@ -361,7 +361,7 @@ class EmployeeCard(Vertical):
         border: solid $primary-darken-2;
         padding: 0;
         margin: 0 1 1 0;
-        cursor: pointer;
+
     }
     EmployeeCard:hover {
         background: $surface-lighten-1;
@@ -489,13 +489,19 @@ class MainScreen(Screen):
     @work
     async def start_connection(self, emp: Employee):
         """启动连接"""
-        conn = OpenClawConnection(
-            emp,
-            on_message=lambda text, e=emp: self.handle_message(e, text),
-            on_status=lambda s, t, e=emp: self.handle_status(e, s, t)
-        )
-        self.connections[emp.id] = conn
-        await conn.connect()
+        try:
+            conn = OpenClawConnection(
+                emp,
+                on_message=lambda text, e=emp: self.handle_message(e, text),
+                on_status=lambda s, t, e=emp: self.handle_status(e, s, t)
+            )
+            self.connections[emp.id] = conn
+            await conn.connect()
+        except Exception as e:
+            print(f"[MainScreen] 连接 {emp.name} 失败: {e}")
+            emp.status = "offline"
+            emp.last_error = str(e)
+            self.refresh_employee(emp)
     
     def handle_message(self, emp: Employee, text: str):
         """处理收到的消息"""
