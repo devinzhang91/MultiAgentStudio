@@ -1,6 +1,6 @@
 """
 OpenClaw Backend Server
-提供 REST API 和 WebSocket 给前端
+员工管理 + OpenClaw 连接管理
 """
 import asyncio
 import json
@@ -9,23 +9,15 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import List, Optional
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-from .models import store, Employee, Message
-from .openclaw_client import OpenClawWebSocketClient
+from .employee_model import Employee, OpenClawConfig, employee_store, EmployeeStatus
+from .openclaw_service import openclaw_manager
 
 # 配置
 API_PORT = 18765
-WS_PORT = 18766
-
-# OpenClaw 配置（演示模式为空）
-OPENCLAW_WS_URL = ""  # "wss://api.openclaw.ai/ws"
-OPENCLAW_API_KEY = ""
-
-# OpenClaw 客户端
-openclaw_client: Optional[OpenClawWebSocketClient] = None
 
 # WebSocket 连接管理器
 class ConnectionManager:
@@ -37,23 +29,46 @@ class ConnectionManager:
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
         self.active_connections.append(websocket)
-        print(f"[Backend] 前端连接建立，当前连接数: {len(self.active_connections)}")
+        print(f"[Backend] 前端连接，当前: {len(self.active_connections)}")
     
     def disconnect(self, websocket: WebSocket):
-        self.active_connections.remove(websocket)
-        print(f"[Backend] 前端连接断开，当前连接数: {len(self.active_connections)}")
+        if websocket in self.active_connections:
+            self.active_connections.remove(websocket)
     
     async def broadcast(self, message: dict):
         """广播消息给所有前端"""
-        for connection in self.active_connections:
+        disconnected = []
+        for conn in self.active_connections:
             try:
-                await connection.send_json(message)
-            except Exception as e:
-                print(f"[Backend] 发送失败: {e}")
+                await conn.send_json(message)
+            except Exception:
+                disconnected.append(conn)
+        
+        # 清理断开的连接
+        for conn in disconnected:
+            self.disconnect(conn)
 
 manager = ConnectionManager()
 
-# 请求模型
+# ========== Pydantic Models ==========
+
+class OpenClawConfigSchema(BaseModel):
+    base_url: str = ""
+    token: str = ""
+    session_key: str = "default"
+    timeout: int = 120
+    enabled: bool = True
+
+class EmployeeCreate(BaseModel):
+    name: str
+    role: str = "OpenClaw 员工"
+    config: OpenClawConfigSchema
+
+class EmployeeUpdate(BaseModel):
+    name: Optional[str] = None
+    role: Optional[str] = None
+    config: Optional[OpenClawConfigSchema] = None
+
 class SendMessageRequest(BaseModel):
     content: str
 
@@ -61,38 +76,30 @@ class UpdateStatusRequest(BaseModel):
     status: str
     task: Optional[str] = None
 
-# 生命周期管理
+# ========== Lifecycle ==========
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期"""
-    global openclaw_client
+    print("[Backend] 启动 OpenClaw Backend...")
     
-    # 启动时
-    print("[Backend] 启动 OpenClaw Backend Server...")
-    
-    # 连接 OpenClaw（如果配置了）
-    if OPENCLAW_WS_URL and OPENCLAW_API_KEY:
-        openclaw_client = OpenClawWebSocketClient(OPENCLAW_WS_URL, OPENCLAW_API_KEY)
-        openclaw_client.on_message(handle_openclaw_message)
-        asyncio.create_task(openclaw_client.connect())
-    else:
-        print("[Backend] 演示模式: 未配置 OpenClaw WebSocket")
+    # 启动所有启用员工的 OpenClaw 连接
+    for emp in employee_store.get_all():
+        if emp.config.enabled and emp.config.base_url:
+            asyncio.create_task(openclaw_manager.start_employee(emp))
     
     yield
     
     # 关闭时
     print("[Backend] 关闭服务器...")
-    if openclaw_client:
-        await openclaw_client.close()
+    await openclaw_manager.stop_all()
 
-# 创建 FastAPI 应用
 app = FastAPI(
     title="OpenClaw Backend",
-    version="0.1.0",
+    version="0.2.0",
     lifespan=lifespan
 )
 
-# CORS 中间件
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -101,63 +108,165 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-def handle_openclaw_message(data: dict):
-    """处理来自 OpenClaw 的消息"""
-    msg_type = data.get("type")
-    
-    if msg_type == "status.update":
-        employee_id = data.get("employee_id")
-        status = data.get("status")
-        task = data.get("current_task")
-        store.update_employee_status(employee_id, status, task)
-        
-        # 广播给前端
-        asyncio.create_task(manager.broadcast({
-            "type": "employee_status_changed",
-            "employee_id": employee_id,
-            "status": status,
-            "current_task": task
-        }))
-    
-    elif msg_type == "message":
-        employee_id = data.get("employee_id")
-        content = data.get("content")
-        msg = store.add_message(employee_id, content, is_user=False)
-        
-        # 广播给前端
-        asyncio.create_task(manager.broadcast({
-            "type": "new_message",
-            "employee_id": employee_id,
-            "message": msg.to_dict()
-        }))
-
-# ========== REST API ==========
+# ========== REST API - Employees ==========
 
 @app.get("/")
 async def root():
-    return {"message": "OpenClaw Backend API", "version": "0.1.0"}
+    return {"message": "OpenClaw Backend API", "version": "0.2.0"}
 
 @app.get("/api/employees")
 async def get_employees():
     """获取所有员工列表"""
     return {
-        "employees": [e.to_dict() for e in store.get_employees()]
+        "employees": [e.to_dict() for e in employee_store.get_all()]
     }
 
 @app.get("/api/employees/{employee_id}")
 async def get_employee(employee_id: str):
-    """获取单个员工信息"""
-    emp = store.get_employee(employee_id)
+    """获取单个员工"""
+    emp = employee_store.get(employee_id)
     if not emp:
-        return {"error": "Employee not found"}, 404
+        raise HTTPException(404, "Employee not found")
     return emp.to_dict()
 
-@app.post("/api/employees/{employee_id}/status")
-async def update_employee_status(employee_id: str, req: UpdateStatusRequest):
-    """更新员工状态"""
-    store.update_employee_status(employee_id, req.status, req.task)
+@app.post("/api/employees")
+async def create_employee(req: EmployeeCreate):
+    """创建新员工"""
+    import uuid
     
-    # 广播更新
+    emp = Employee(
+        id=f"emp-{uuid.uuid4().hex[:8]}",
+        name=req.name,
+        role=req.role,
+        config=OpenClawConfig(
+            base_url=req.config.base_url,
+            token=req.config.token,
+            session_key=req.config.session_key,
+            timeout=req.config.timeout,
+            enabled=req.config.enabled,
+        )
+    )
+    
+    employee_store.create(emp)
+    
+    # 如果启用，启动 OpenClaw 连接
+    if emp.config.enabled and emp.config.base_url:
+        asyncio.create_task(openclaw_manager.start_employee(emp))
+    
+    await manager.broadcast({
+        "type": "employee_created",
+        "employee": emp.to_dict()
+    })
+    
+    return emp.to_dict()
+
+@app.put("/api/employees/{employee_id}")
+async def update_employee(employee_id: str, req: EmployeeUpdate):
+    """更新员工"""
+    emp = employee_store.get(employee_id)
+    if not emp:
+        raise HTTPException(404, "Employee not found")
+    
+    update_data = {}
+    if req.name is not None:
+        update_data["name"] = req.name
+    if req.role is not None:
+        update_data["role"] = req.role
+    if req.config is not None:
+        update_data["config"] = req.config.dict()
+    
+    updated = employee_store.update(employee_id, **update_data)
+    
+    # 如果配置改变，重启连接
+    if req.config is not None and emp.config.enabled:
+        await openclaw_manager.restart_employee(updated)
+    
+    await manager.broadcast({
+        "type": "employee_updated",
+        "employee": updated.to_dict()
+    })
+    
+    return updated.to_dict()
+
+@app.delete("/api/employees/{employee_id}")
+async def delete_employee(employee_id: str):
+    """删除员工"""
+    emp = employee_store.get(employee_id)
+    if not emp:
+        raise HTTPException(404, "Employee not found")
+    
+    # 停止连接
+    await openclaw_manager.stop_employee(employee_id)
+    
+    # 删除数据
+    employee_store.delete(employee_id)
+    
+    await manager.broadcast({
+        "type": "employee_deleted",
+        "employee_id": employee_id
+    })
+    
+    return {"success": True}
+
+@app.post("/api/employees/{employee_id}/restart")
+async def restart_employee_connection(employee_id: str):
+    """重启员工的 OpenClaw 连接"""
+    emp = employee_store.get(employee_id)
+    if not emp:
+        raise HTTPException(404, "Employee not found")
+    
+    await openclaw_manager.restart_employee(emp)
+    return {"success": True, "message": "Connection restarted"}
+
+# ========== REST API - Messages & Status ==========
+
+@app.get("/api/employees/{employee_id}/messages")
+async def get_messages(employee_id: str):
+    """获取消息历史"""
+    emp = employee_store.get(employee_id)
+    if not emp:
+        raise HTTPException(404, "Employee not found")
+    
+    messages = employee_store.get_messages(employee_id)
+    employee_store.clear_unread(employee_id)
+    
+    return {"messages": messages}
+
+@app.post("/api/employees/{employee_id}/messages")
+async def send_message(employee_id: str, req: SendMessageRequest):
+    """发送消息给员工"""
+    emp = employee_store.get(employee_id)
+    if not emp:
+        raise HTTPException(404, "Employee not found")
+    
+    # 保存用户消息
+    user_msg = employee_store.add_message(employee_id, req.content, is_user=True)
+    
+    # 发送到 OpenClaw
+    response_text = await openclaw_manager.send_message(employee_id, req.content)
+    
+    # 保存回复
+    if response_text:
+        bot_msg = employee_store.add_message(employee_id, response_text, is_user=False)
+        
+        # 广播给前端
+        await manager.broadcast({
+            "type": "new_message",
+            "employee_id": employee_id,
+            "message": bot_msg
+        })
+    
+    return user_msg
+
+@app.post("/api/employees/{employee_id}/status")
+async def update_status(employee_id: str, req: UpdateStatusRequest):
+    """更新员工状态"""
+    emp = employee_store.get(employee_id)
+    if not emp:
+        raise HTTPException(404, "Employee not found")
+    
+    employee_store.update_status(employee_id, req.status, req.task)
+    
     await manager.broadcast({
         "type": "employee_status_changed",
         "employee_id": employee_id,
@@ -166,64 +275,6 @@ async def update_employee_status(employee_id: str, req: UpdateStatusRequest):
     })
     
     return {"success": True}
-
-@app.get("/api/employees/{employee_id}/messages")
-async def get_messages(employee_id: str):
-    """获取与员工的消息历史"""
-    messages = store.get_messages(employee_id)
-    
-    # 清除未读
-    store.clear_unread(employee_id)
-    
-    return {
-        "messages": [m.to_dict() for m in messages]
-    }
-
-@app.post("/api/employees/{employee_id}/messages")
-async def send_message(employee_id: str, req: SendMessageRequest):
-    """发送消息给员工"""
-    # 保存用户消息
-    user_msg = store.add_message(employee_id, req.content, is_user=True)
-    
-    # 发送到 OpenClaw（如果已连接）
-    if openclaw_client and openclaw_client.connected:
-        await openclaw_client.send_task(employee_id, req.content)
-    else:
-        # 演示模式：模拟响应
-        asyncio.create_task(simulate_response(employee_id, req.content))
-    
-    return user_msg.to_dict()
-
-async def simulate_response(employee_id: str, content: str):
-    """演示模式：模拟员工响应"""
-    await asyncio.sleep(1.5)
-    
-    emp = store.get_employee(employee_id)
-    if not emp:
-        return
-    
-    responses = {
-        "alice-001": f"✅ 收到！我是 {emp.name}，正在分析代码...",
-        "bob-002": f"📝 {emp.name} 开始生成文档，请稍等。",
-        "carol-003": f"🧪 {emp.name} 准备执行测试。",
-        "dave-004": "⚫ 抱歉，我当前离线。",
-        "eve-005": f"📊 {emp.name} 正在处理数据分析...",
-    }
-    
-    response = responses.get(
-        employee_id,
-        f"🦞 {emp.name} 收到: {content[:20]}..."
-    )
-    
-    # 添加响应消息
-    msg = store.add_message(employee_id, response, is_user=False)
-    
-    # 广播给前端
-    await manager.broadcast({
-        "type": "new_message",
-        "employee_id": employee_id,
-        "message": msg.to_dict()
-    })
 
 # ========== WebSocket ==========
 
@@ -236,7 +287,7 @@ async def websocket_endpoint(websocket: WebSocket):
         # 发送初始数据
         await websocket.send_json({
             "type": "init",
-            "employees": [e.to_dict() for e in store.get_employees()]
+            "employees": [e.to_dict() for e in employee_store.get_all()]
         })
         
         # 接收消息
@@ -244,14 +295,19 @@ async def websocket_endpoint(websocket: WebSocket):
             data = await websocket.receive_text()
             try:
                 msg = json.loads(data)
-                print(f"[Backend] 收到前端消息: {msg}")
+                msg_type = msg.get("type")
                 
-                # 处理前端命令
-                if msg.get("type") == "ping":
+                if msg_type == "ping":
                     await websocket.send_json({"type": "pong"})
-                    
+                elif msg_type == "restart_connection":
+                    emp_id = msg.get("employee_id")
+                    if emp_id:
+                        emp = employee_store.get(emp_id)
+                        if emp:
+                            await openclaw_manager.restart_employee(emp)
+                            
             except json.JSONDecodeError:
-                print(f"[Backend] 收到无效消息: {data}")
+                pass
                 
     except WebSocketDisconnect:
         manager.disconnect(websocket)
@@ -260,13 +316,12 @@ async def websocket_endpoint(websocket: WebSocket):
         manager.disconnect(websocket)
 
 def main():
-    """启动服务器"""
     print(f"""
 ╔═══════════════════════════════════════════════════════════╗
 ║                                                           ║
-║   🦞 OpenClaw Backend Server                              ║
+║   🦞 OpenClaw Backend Server v0.2.0                       ║
 ║                                                           ║
-║   REST API: http://localhost:{API_PORT}                     ║
+║   API: http://localhost:{API_PORT}                          ║
 ║   WebSocket: ws://localhost:{API_PORT}/ws                   ║
 ║                                                           ║
 ╚═══════════════════════════════════════════════════════════╝

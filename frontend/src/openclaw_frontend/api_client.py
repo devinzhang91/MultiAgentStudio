@@ -15,11 +15,7 @@ class BackendClient:
         self.http_client = httpx.AsyncClient(base_url=api_url, timeout=10.0)
         self.websocket: Optional[websockets.WebSocketClientProtocol] = None
         self.connected = False
-        self._callbacks: Dict[str, List[Callable]] = {
-            "employee_status_changed": [],
-            "new_message": [],
-            "init": [],
-        }
+        self._callbacks: Dict[str, List[Callable]] = {}
         self._ws_task: Optional[asyncio.Task] = None
     
     def on(self, event_type: str, callback: Callable):
@@ -34,9 +30,24 @@ class BackendClient:
             try:
                 callback(data)
             except Exception as e:
-                print(f"[Frontend] 回调错误: {e}")
+                print(f"[Client] 回调错误: {e}")
     
     # ========== HTTP API ==========
+    
+    async def get(self, path: str) -> Dict:
+        resp = await self.http_client.get(path)
+        resp.raise_for_status()
+        return resp.json()
+    
+    async def post(self, path: str, json: Dict = None) -> Dict:
+        resp = await self.http_client.post(path, json=json)
+        resp.raise_for_status()
+        return resp.json()
+    
+    async def delete(self, path: str) -> Dict:
+        resp = await self.http_client.delete(path)
+        resp.raise_for_status()
+        return resp.json()
     
     async def get_employees(self) -> List[Dict]:
         """获取员工列表"""
@@ -46,8 +57,17 @@ class BackendClient:
             data = resp.json()
             return data.get("employees", [])
         except Exception as e:
-            print(f"[Frontend] 获取员工失败: {e}")
+            print(f"[Client] 获取员工失败: {e}")
             return []
+    
+    async def get_employee(self, employee_id: str) -> Optional[Dict]:
+        """获取单个员工"""
+        try:
+            resp = await self.http_client.get(f"/api/employees/{employee_id}")
+            resp.raise_for_status()
+            return resp.json()
+        except Exception:
+            return None
     
     async def get_messages(self, employee_id: str) -> List[Dict]:
         """获取消息历史"""
@@ -57,7 +77,7 @@ class BackendClient:
             data = resp.json()
             return data.get("messages", [])
         except Exception as e:
-            print(f"[Frontend] 获取消息失败: {e}")
+            print(f"[Client] 获取消息失败: {e}")
             return []
     
     async def send_message(self, employee_id: str, content: str) -> Optional[Dict]:
@@ -70,24 +90,8 @@ class BackendClient:
             resp.raise_for_status()
             return resp.json()
         except Exception as e:
-            print(f"[Frontend] 发送消息失败: {e}")
-            return None
-    
-    async def update_status(self, employee_id: str, status: str, task: str = None) -> bool:
-        """更新员工状态"""
-        try:
-            payload = {"status": status}
-            if task:
-                payload["task"] = task
-            resp = await self.http_client.post(
-                f"/api/employees/{employee_id}/status",
-                json=payload
-            )
-            resp.raise_for_status()
-            return True
-        except Exception as e:
-            print(f"[Frontend] 更新状态失败: {e}")
-            return False
+            print(f"[Client] 发送消息失败: {e}")
+            raise
     
     # ========== WebSocket ==========
     
@@ -99,11 +103,11 @@ class BackendClient:
         """WebSocket 连接循环"""
         while True:
             try:
-                print(f"[Frontend] 连接 WebSocket: {self.ws_url}")
+                print(f"[Client] 连接 WebSocket: {self.ws_url}")
                 async with websockets.connect(self.ws_url) as ws:
                     self.websocket = ws
                     self.connected = True
-                    print("[Frontend] WebSocket 连接成功")
+                    print("[Client] WebSocket 连接成功")
                     
                     async for message in ws:
                         try:
@@ -112,21 +116,27 @@ class BackendClient:
                             
                             if msg_type == "init":
                                 self._trigger("init", data.get("employees", []))
+                            elif msg_type == "employee_created":
+                                self._trigger("employee_created", data)
+                            elif msg_type == "employee_updated":
+                                self._trigger("employee_updated", data)
+                            elif msg_type == "employee_deleted":
+                                self._trigger("employee_deleted", data)
                             elif msg_type == "employee_status_changed":
                                 self._trigger("employee_status_changed", data)
                             elif msg_type == "new_message":
                                 self._trigger("new_message", data)
                                 
                         except json.JSONDecodeError:
-                            print(f"[Frontend] 收到无效消息: {message}")
+                            pass
                             
             except websockets.exceptions.ConnectionClosed:
-                print("[Frontend] WebSocket 断开，准备重连...")
+                print("[Client] WebSocket 断开")
             except Exception as e:
-                print(f"[Frontend] WebSocket 错误: {e}")
+                print(f"[Client] WebSocket 错误: {e}")
             
             self.connected = False
-            await asyncio.sleep(3)  # 重连间隔
+            await asyncio.sleep(3)
     
     async def close(self):
         """关闭连接"""
