@@ -198,17 +198,19 @@ class DashboardScreen(Screen):
         try:
             # 获取容器
             container = self.query_one("#employee-list")
-            print(f"[Dashboard] 找到容器: {container}")
+            print(f"[Dashboard] 找到容器: {container}, 类型: {type(container)}")
             
             # 清空现有内容（保留 loading-text）
+            removed = 0
             for child in list(container.children):
                 if child.id != "loading-text":
                     child.remove()
-            print("[Dashboard] 清空完成")
+                    removed += 1
+            print(f"[Dashboard] 清空完成，移除了 {removed} 个子元素")
             
             # 隐藏加载文本
             try:
-                loading = self.query_one("#loading-text")
+                loading = container.query_one("#loading-text")
                 loading.styles.display = "none"
                 print("[Dashboard] 隐藏 loading")
             except Exception as e:
@@ -216,14 +218,20 @@ class DashboardScreen(Screen):
             
             # 添加员工卡片
             if employees:
-                print(f"[Dashboard] 添加 {len(employees)} 个卡片")
-                for emp in employees:
+                print(f"[Dashboard] 开始添加 {len(employees)} 个卡片")
+                for i, emp in enumerate(employees):
                     try:
+                        print(f"[Dashboard] 创建卡片 {i}: {emp.get('name')}")
                         card = EmployeeCard(emp)
+                        print(f"[Dashboard] 卡片创建成功，准备 mount")
                         container.mount(card)
-                        print(f"[Dashboard] 添加卡片: {emp.get('name')}")
+                        print(f"[Dashboard] 卡片 {i} mount 成功")
                     except Exception as e:
-                        print(f"[Dashboard] 添加卡片失败: {e}")
+                        print(f"[Dashboard] 添加卡片 {i} 失败: {e}")
+                        import traceback
+                        traceback.print_exc()
+                
+                print("[Dashboard] 所有卡片添加完成")
                 
                 # 更新状态
                 self.update_status("🟢 已连接")
