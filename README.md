@@ -1,56 +1,79 @@
 # 🦞 OpenClaw TUI Studio
 
-可视化的 OpenClaw 员工管理工具 - 单文件 TUI 应用。
+可视化的 OpenClaw 员工管理工作室 - 交互式终端界面。
+
+![Python](https://img.shields.io/badge/python-3.9+-blue.svg)
+![TUI](https://img.shields.io/badge/TUI-Textual-purple.svg)
+![License](https://img.shields.io/badge/license-MIT-green.svg)
 
 ## ✨ 特点
 
-- **单文件**: 只有一个 `openclaw_studio.py`，无需复杂架构
-- **直接运行**: 无需前后端分离，一条命令启动
-- **本地存储**: 员工配置保存在项目目录的 `data/employees.json`
-- **多平台**: Python + Textual，支持 macOS/Linux/Windows
-- **独立连接**: 每个员工有独立的 OpenClaw WebSocket 连接
+- **🎨 精美界面**: Emoji 图标 + 平面设计，视觉体验佳
+- **🖱️ 鼠标支持**: 点击选择、双击进入对话
+- **⌨️ 键盘导航**: 方向键导航，Enter/Space 交互
+- **📁 本地存储**: 员工信息保存在项目目录
+- **🔧 简单易用**: 单文件运行，无需复杂配置
 
 ## 🚀 快速开始
 
-### 方式1: 使用脚本（推荐）
-
-脚本会自动创建虚拟环境并安装依赖：
-
 ```bash
+# 克隆项目
+git clone https://github.com/yourusername/openclaw-tui-studio.git
+cd openclaw-tui-studio
+
+# 一键启动（自动创建虚拟环境+安装依赖）
 ./run.sh
 ```
 
-### 方式2: 手动运行
+## 🎮 操作指南
 
-如果你不想用虚拟环境：
+### 🖱️ 鼠标操作
 
-```bash
-# 安装依赖
-pip3 install textual aiohttp cryptography
+| 操作 | 功能 |
+|------|------|
+| 点击员工卡片 | 选中员工 |
+| 双击员工卡片 | 进入对话 |
+| 点击按钮 | 执行操作 |
 
-# 运行
-python3 openclaw_studio.py
-```
+### ⌨️ 键盘操作
+
+| 按键 | 功能 |
+|------|------|
+| `↑` `↓` `←` `→` | 导航选择员工 |
+| `Enter` | 进入对话 |
+| `Space` | 打开员工菜单 |
+| `a` | 添加新员工 |
+| `r` | 刷新列表 |
+| `q` | 退出应用 |
+| `Esc` | 返回/关闭 |
+
+### 📊 Emoji 图标说明
+
+| 图标 | 含义 |
+|------|------|
+| 🦞 | OpenClaw 员工 |
+| 💬 | 未读消息 |
+| 🟢 | 空闲状态 |
+| 🟡 | 工作中 |
+| ⚫ | 离线状态 |
+| 📋 | 当前任务 |
 
 ## 📁 项目结构
 
 ```
 openclaw-tui-studio/
-├── openclaw_studio.py    # 主程序（单文件，~800行）
+├── openclaw_studio.py    # 主程序（单文件）
 ├── run.sh                # 启动脚本
 ├── README.md             # 本文件
 ├── LICENSE               # MIT 许可证
-├── .gitignore            # Git 忽略配置
-└── data/                 # 数据目录（自动创建）
-    ├── employees.json    # 员工信息配置文件
-    └── identities/       # 员工身份文件（自动创建）
-        ├── emp-001.json
-        └── emp-002.json
+└── data/                 # 数据目录
+    ├── employees.json    # 员工配置文件
+    └── identities/       # 身份文件（自动创建）
 ```
 
 ## ⚙️ 配置员工
 
-编辑 `data/employees.json` 文件来添加/修改员工：
+编辑 `data/employees.json`：
 
 ```json
 {
@@ -59,63 +82,30 @@ openclaw-tui-studio/
     "name": "Alice",
     "role": "代码审查专家",
     "status": "offline",
-    "current_task": "",
+    "avatar": "🦞",
     "unread_count": 0,
-    "last_error": "",
+    "current_task": "",
+    "enabled": true,
     "config": {
-      "base_url": "wss://your-openclaw-gateway.com",
-      "token": "your_token_here",
-      "session_key": "alice",
-      "timeout": 120,
-      "enabled": true
+      "base_url": "wss://your-gateway.com",
+      "token": "your_token",
+      "session": "alice"
     }
   }
 }
 ```
 
-### 配置项说明
-
-| 配置项 | 说明 | 示例 |
-|--------|------|------|
-| `base_url` | OpenClaw Gateway 地址 | `wss://gateway.openclaw.com` |
-| `token` | 认证令牌 | `oc_token_xxx` |
-| `session_key` | 会话标识 | `alice` |
-| `timeout` | 请求超时（秒） | `120` |
-| `enabled` | 是否启用连接 | `true`/`false` |
-
 ### 添加新员工
 
-1. 复制一个现有员工配置块
-2. 修改 `id`（如 `emp-003`）
-3. 修改 `name`、`role` 等信息
-4. 配置 `config` 中的连接参数
-5. 保存文件并重启程序
+1. 按 `a` 键打开添加界面
+2. 填写名称、角色等信息
+3. 保存后自动显示在工作室
 
-## ⌨️ 快捷键
+## 💬 对话功能
 
-### 主界面
-
-| 按键 | 功能 |
-|------|------|
-| `↑/↓/←/→` | 导航员工卡片 |
-| `Enter` | 进入对话 |
-| `Space` | 查看员工详情 |
-| `a` | 添加员工（开发中） |
-| `r` | 刷新列表 |
-| `q` | 退出应用 |
-
-### 对话界面
-
-| 按键 | 功能 |
-|------|------|
-| `Enter` | 发送消息 |
-| `Esc` | 返回主界面 |
-
-## 🦞 什么是 OpenClaw?
-
-OpenClaw 是一个 AI Agent 网关协议，通过 WebSocket 连接 AI 员工（Agent）。
-
-每个员工可以独立配置连接参数，支持同时管理多个 OpenClaw 员工。
+1. 选中员工，按 `Enter` 或双击进入对话
+2. 输入消息，按 `Enter` 发送
+3. 按 `Esc` 返回工作室
 
 ## 📦 依赖
 
@@ -123,17 +113,6 @@ OpenClaw 是一个 AI Agent 网关协议，通过 WebSocket 连接 AI 员工（A
 - textual >= 0.45.0
 - aiohttp >= 3.9.0
 - cryptography >= 41.0.0
-
-## 📝 TODO
-
-- [x] 员工列表展示
-- [x] OpenClaw WebSocket 连接
-- [x] 消息发送/接收
-- [x] 员工详情查看
-- [ ] 添加员工 GUI 界面
-- [ ] 消息历史保存
-- [ ] 员工状态实时更新
-- [ ] 更好的错误提示
 
 ## 🤝 贡献
 
