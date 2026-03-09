@@ -8,6 +8,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FRONTEND_DIR="$SCRIPT_DIR/frontend"
 VENV_DIR="$FRONTEND_DIR/.venv"
+LOG_FILE="$SCRIPT_DIR/frontend.log"
 
 # 颜色
 GREEN='\033[0;32m'
@@ -15,6 +16,7 @@ BLUE='\033[0;34m'
 NC='\033[0m'
 
 echo -e "${GREEN}[INFO]${NC} 启动 OpenClaw Frontend (TUI)..."
+echo -e "${GREEN}[INFO]${NC} 日志文件: $LOG_FILE"
 
 # 检查后端是否运行
 if ! curl -s http://localhost:18765 > /dev/null 2>&1; then
@@ -33,6 +35,9 @@ source "$VENV_DIR/bin/activate"
 pip install -q --upgrade pip
 pip install -q -e "$FRONTEND_DIR"
 
-# 启动前端（前台运行，占用终端）
+# 清空日志
+> "$LOG_FILE"
+
+# 启动前端（前台运行，占用终端），同时记录日志
 echo ""
-openclaw-frontend
+exec openclaw-frontend 2>&1 | tee -a "$LOG_FILE"
