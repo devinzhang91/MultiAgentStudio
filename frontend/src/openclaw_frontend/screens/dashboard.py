@@ -1,9 +1,10 @@
 """主面板 - 员工列表 + 管理功能"""
 from textual.screen import Screen
-from textual.widgets import Header, Footer, Static, Button, Input, Label, Switch
-from textual.containers import Horizontal, Vertical, Grid, Container
+from textual.widgets import Header, Footer, Static, Button, Input, Label, Switch, DataTable
+from textual.containers import Horizontal, Vertical, Container
 from textual.reactive import reactive
 from textual import work
+import asyncio
 
 
 class EmployeeCard(Vertical):
@@ -347,9 +348,12 @@ class DashboardScreen(Screen):
             
             yield Static("🦞 OpenClaw 工作室 - 点击卡片对话，Space 查看属性", classes="subtitle")
             
-            # 使用 Grid 容器
-            with Grid(id="employee-grid"):
-                pass
+            # 员工卡片容器
+            with Vertical(id="employee-container"):
+                with Horizontal(id="employee-row-1"):
+                    pass
+                with Horizontal(id="employee-row-2"):
+                    pass
             
             with Horizontal(classes="status-bar"):
                 yield Static("🟡 连接中...", id="conn-status")
@@ -368,13 +372,13 @@ class DashboardScreen(Screen):
     DashboardScreen .subtitle {
         height: 2; padding: 0 2; color: $text-muted;
     }
-    DashboardScreen #employee-grid {
+    DashboardScreen #employee-container {
         height: 1fr;
-        layout: grid;
-        grid-size: 4;
-        grid-columns: 1fr 1fr 1fr 1fr;
-        grid-gutter: 1;
         padding: 1 2;
+    }
+    DashboardScreen #employee-row-1, DashboardScreen #employee-row-2 {
+        height: auto;
+        align: left top;
     }
     DashboardScreen .status-bar {
         height: 1; background: $primary-darken-3;
@@ -389,21 +393,37 @@ class DashboardScreen(Screen):
     async def load_employees(self):
         try:
             self.employees = await self.app.client.get_employees()
-            self.call_from_thread(self.update_display)
-            self.query_one("#conn-status", Static).update("🟢 已连接")
+            print(f"[Dashboard] 加载到 {len(self.employees)} 个员工")
+            
+            # 使用 call_from_thread 在 UI 线程中更新
+            def do_update():
+                self.update_display()
+                self.query_one("#conn-status", Static).update("🟢 已连接")
+            
+            self.call_from_thread(do_update)
         except Exception as e:
-            self.query_one("#conn-status", Static).update(f"🔴 错误: {e}")
+            print(f"[Dashboard] 加载失败: {e}")
+            self.call_from_thread(lambda: self.query_one("#conn-status", Static).update(f"🔴 错误: {e}"))
     
     def update_display(self):
         try:
-            grid = self.query_one("#employee-grid")
-            # 移除现有子元素
-            for child in list(grid.children):
+            # 获取行容器
+            row1 = self.query_one("#employee-row-1")
+            row2 = self.query_one("#employee-row-2")
+            
+            # 清空现有卡片
+            for child in list(row1.children):
+                child.remove()
+            for child in list(row2.children):
                 child.remove()
             
-            # 添加员工卡片
-            for emp in self.employees:
-                grid.mount(EmployeeCard(emp))
+            # 添加员工卡片（每行4个）
+            for i, emp in enumerate(self.employees):
+                card = EmployeeCard(emp)
+                if i < 4:
+                    row1.mount(card)
+                else:
+                    row2.mount(card)
             
             online = sum(1 for e in self.employees if e.get("status") != "offline")
             self.query_one("#emp-count", Static).update(f"🦞 {online}/{len(self.employees)}")
@@ -446,4 +466,6 @@ class DashboardScreen(Screen):
         self.notify(help_text, severity="information", timeout=20)
     
     def watch_employees(self, employees):
-        self.update_display()
+        # 当 employees 变化时，如果 UI 已挂载则更新
+        if self.is_mounted:
+            self.update_display()
