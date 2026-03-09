@@ -347,6 +347,7 @@ class DashboardScreen(Screen):
             
             yield Static("🦞 OpenClaw 工作室 - 点击卡片对话，Space 查看属性", classes="subtitle")
             
+            # 使用 Grid 容器
             with Grid(id="employee-grid"):
                 pass
             
@@ -368,9 +369,12 @@ class DashboardScreen(Screen):
         height: 2; padding: 0 2; color: $text-muted;
     }
     DashboardScreen #employee-grid {
-        height: 1fr; grid-size: 4;
+        height: 1fr;
+        layout: grid;
+        grid-size: 4;
         grid-columns: 1fr 1fr 1fr 1fr;
-        grid-gutter: 1; padding: 1 2;
+        grid-gutter: 1;
+        padding: 1 2;
     }
     DashboardScreen .status-bar {
         height: 1; background: $primary-darken-3;
@@ -385,20 +389,26 @@ class DashboardScreen(Screen):
     async def load_employees(self):
         try:
             self.employees = await self.app.client.get_employees()
-            self.update_display()
+            self.call_from_thread(self.update_display)
             self.query_one("#conn-status", Static).update("🟢 已连接")
         except Exception as e:
             self.query_one("#conn-status", Static).update(f"🔴 错误: {e}")
     
     def update_display(self):
-        grid = self.query_one("#employee-grid", Grid)
-        grid.remove_children()
-        
-        for emp in self.employees:
-            grid.mount(EmployeeCard(emp))
-        
-        online = sum(1 for e in self.employees if e.get("status") != "offline")
-        self.query_one("#emp-count", Static).update(f"🦞 {online}/{len(self.employees)}")
+        try:
+            grid = self.query_one("#employee-grid")
+            # 移除现有子元素
+            for child in list(grid.children):
+                child.remove()
+            
+            # 添加员工卡片
+            for emp in self.employees:
+                grid.mount(EmployeeCard(emp))
+            
+            online = sum(1 for e in self.employees if e.get("status") != "offline")
+            self.query_one("#emp-count", Static).update(f"🦞 {online}/{len(self.employees)}")
+        except Exception as e:
+            print(f"[Dashboard] 更新显示错误: {e}")
     
     def on_button_pressed(self, event):
         if event.button.id == "refresh":
