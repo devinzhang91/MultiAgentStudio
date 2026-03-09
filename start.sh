@@ -54,7 +54,7 @@ if ! command -v python3 &> /dev/null; then
     exit 1
 fi
 
-PYTHON_VERSION=$(python3 --version 2>&1 | grep -oP '\d+\.\d+')
+PYTHON_VERSION=$(python3 --version 2>&1 | sed -n 's/Python \([0-9]\{1,\}\.[0-9]\{1,\}\).*/\1/p')
 REQUIRED_VERSION="3.9"
 
 if [ "$(printf '%s\n' "$REQUIRED_VERSION" "$PYTHON_VERSION" | sort -V | head -n1)" != "$REQUIRED_VERSION" ]; then
@@ -101,6 +101,11 @@ if [ -f "$REQUIREMENTS" ]; then
 else
     print_warning "未找到 requirements.txt，跳过依赖安装"
 fi
+
+# 安装本地包
+print_info "安装 OpenClaw TUI Studio..."
+pip install -e "$SCRIPT_DIR" -q
+print_success "本地包安装完成"
 
 # 清理旧日志
 if [ -f "$LOG_FILE" ]; then
