@@ -1,11 +1,12 @@
-"""员工卡片组件 - 支持键盘导航"""
+"""员工卡片组件 - 支持鼠标和键盘双模式"""
 from textual.widgets import Static
 from textual.containers import Vertical
 from textual.reactive import reactive
+from textual import events
 
 
 class EmployeeCard(Vertical):
-    """员工卡片 - 扁平化设计，支持键盘导航和选中"""
+    """员工卡片 - 扁平化设计，支持鼠标点击和键盘导航"""
     
     # 响应式属性
     name = reactive("")
@@ -14,6 +15,7 @@ class EmployeeCard(Vertical):
     has_unread = reactive(False)
     current_task = reactive("")
     selected = reactive(False)
+    hovered = reactive(False)
     
     DEFAULT_CSS = """
     EmployeeCard {
@@ -22,8 +24,13 @@ class EmployeeCard(Vertical):
         background: $surface;
         border: solid $primary-darken-2;
         padding: 0;
+        cursor: pointer;  /* 鼠标手型 */
     }
     EmployeeCard:hover {
+        background: $surface-lighten-1;
+        border: solid $primary;
+    }
+    EmployeeCard.hovered {
         background: $surface-lighten-1;
         border: solid $primary;
     }
@@ -39,6 +46,9 @@ class EmployeeCard(Vertical):
         height: 3;
         background: $primary-darken-3;
         content-align: center middle;
+    }
+    EmployeeCard:hover .card-header {
+        background: $primary-darken-2;
     }
     EmployeeCard:focus .card-header {
         background: $accent-darken-1;
@@ -153,6 +163,27 @@ class EmployeeCard(Vertical):
         else:
             self.remove_class("selected")
     
+    def watch_hovered(self, hovered: bool):
+        """监听悬停状态"""
+        if hovered:
+            self.add_class("hovered")
+        else:
+            self.remove_class("hovered")
+    
+    # ========== 鼠标事件 ==========
+    def on_enter(self, event: events.Enter) -> None:
+        """鼠标进入卡片"""
+        self.hovered = True
+    
+    def on_leave(self, event: events.Leave) -> None:
+        """鼠标离开卡片"""
+        self.hovered = False
+    
+    def on_click(self, event: events.Click) -> None:
+        """鼠标点击卡片 - 进入对话"""
+        self.app.push_screen("chat", {"employee_id": self.employee_id})
+    
+    # ========== 键盘事件 ==========
     def on_key(self, event):
         """处理键盘事件"""
         if event.key == "enter":
@@ -164,11 +195,13 @@ class EmployeeCard(Vertical):
             self.show_detail()
             event.stop()
     
-    def on_click(self):
-        """点击卡片进入对话"""
-        self.app.push_screen("chat", {"employee_id": self.employee_id})
-    
     def show_detail(self):
         """显示员工详情"""
-        self.notify(f"🦞 {self.name}\n角色: {self.role}\n状态: {self.status_text}\n任务: {self.current_task or '无'}", 
-                   title="员工详情", timeout=5)
+        self.app.notify(
+            f"🦞 {self.name}\n"
+            f"角色: {self.role}\n"
+            f"状态: {self.status_text}\n"
+            f"任务: {self.current_task or '无'}", 
+            title="员工详情", 
+            timeout=5
+        )

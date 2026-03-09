@@ -1,14 +1,16 @@
-"""聊天屏幕 - 支持键盘导航"""
+"""聊天屏幕 - 支持鼠标和键盘双模式"""
 from textual.screen import Screen
-from textual.widgets import Button, Static, Input
+from textual.widgets import Button, Static
 from textual.containers import Horizontal, Vertical
-from textual.reactive import reactive
 
 from ..widgets.chat_panel import ChatPanel
 
 
 class ChatScreen(Screen):
-    """聊天界面 - 与特定员工对话，支持键盘导航"""
+    """聊天界面 - 与特定员工对话
+    
+    支持鼠标点击 + 键盘操作双模式
+    """
     
     DEFAULT_CSS = """
     ChatScreen {
@@ -30,8 +32,12 @@ class ChatScreen(Screen):
         width: auto;
         min-width: 8;
     }
+    ChatScreen .back-btn:hover {
+        background: $primary;
+    }
     ChatScreen .back-btn:focus {
         background: $accent;
+        border: solid $accent-lighten-1;
     }
     ChatScreen .title-text {
         text-style: bold;
@@ -83,18 +89,19 @@ class ChatScreen(Screen):
                     employee_name=self.employee['name']
                 )
             
-            yield Static("Tab 切换 │ Enter 发送 │ Esc 返回工作室", classes="nav-hint")
+            yield Static("🖱️ 点击输入框 │ ⌨️ Tab 切换 │ Enter 发送 │ Esc 返回", classes="nav-hint")
     
     def on_mount(self):
         """挂载后聚焦输入框"""
         try:
             chat_panel = self.query_one(ChatPanel)
-            input_widget = chat_panel.query_one("#chat-input", Input)
+            input_widget = chat_panel.query_one("#chat-input")
             input_widget.focus()
         except Exception:
             pass
     
     def on_button_pressed(self, event: Button.Pressed) -> None:
+        """处理按钮点击"""
         if event.button.id == "back-btn":
             self.action_go_back()
     

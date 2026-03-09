@@ -1,4 +1,4 @@
-"""主面板屏幕 - 支持键盘导航"""
+"""主面板屏幕 - 支持鼠标和键盘双模式"""
 from textual.screen import Screen
 from textual.widgets import Header, Footer, Static, Button
 from textual.containers import Horizontal, Vertical
@@ -9,7 +9,10 @@ from ..widgets.status_bar import StatusBar
 
 
 class DashboardScreen(Screen):
-    """主面板 - OpenClaw 工作室总览，支持键盘导航"""
+    """主面板 - OpenClaw 工作室总览
+    
+    支持鼠标点击 + 键盘导航双模式
+    """
     
     employees = reactive(list)
     
@@ -28,8 +31,12 @@ class DashboardScreen(Screen):
         margin-right: 1;
         min-width: 10;
     }
+    DashboardScreen .toolbar Button:hover {
+        background: $primary;
+    }
     DashboardScreen .toolbar Button:focus {
         background: $accent;
+        border: solid $accent-lighten-1;
     }
     DashboardScreen .main-area {
         height: 1fr;
@@ -64,7 +71,7 @@ class DashboardScreen(Screen):
         """组装主面板"""
         yield Header(show_clock=True)
         
-        # 工具栏 - 按钮可以 Tab 导航
+        # 工具栏 - 支持鼠标点击
         with Horizontal(classes="toolbar"):
             yield Button("🔄 刷新", id="refresh-btn", variant="primary")
             yield Button("⚙️ 设置", id="settings-btn", variant="default")
@@ -72,7 +79,7 @@ class DashboardScreen(Screen):
         
         # 主内容区
         with Vertical(classes="main-area"):
-            yield Static("🦞 OpenClaw 工作室 - 员工列表", classes="title-section")
+            yield Static("🦞 OpenClaw 工作室 - 点击员工卡片或使用方向键选择", classes="title-section")
             yield EmployeeList(employees=self.employees)
         
         yield StatusBar(id="status-bar")
@@ -86,7 +93,7 @@ class DashboardScreen(Screen):
         status_bar.unread_total = sum(e.get("unread", 0) for e in self.employees)
     
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        """处理按钮点击"""
+        """处理按钮点击（鼠标或键盘触发）"""
         if event.button.id == "refresh-btn":
             self.action_refresh()
         elif event.button.id == "settings-btn":
@@ -110,24 +117,23 @@ class DashboardScreen(Screen):
     def action_show_help(self):
         """显示帮助信息"""
         help_text = """
-📖 键盘操作指南
+🖱️ 鼠标操作:
+  点击员工卡片   进入对话
+  点击按钮       执行操作
 
-导航:
-  ↑/↓/←/→   在员工卡片间移动
-  Tab       在按钮和卡片间切换
-  Home      跳到第一个员工
-  End       跳到最后一个员工
+⌨️ 键盘操作:
+  ↑/↓/←/→      在员工卡片间移动
+  Tab          在按钮和卡片间切换
+  Enter        进入对话 / 点击按钮
+  Space        查看员工详情
+  Home/End     跳到第一个/最后一个
+  Esc          返回工作室
+  q            退出应用
+  r            刷新数据
+  ?            显示帮助
 
-操作:
-  Enter     进入对话 / 点击按钮
-  Space     查看员工详情
-  q         退出应用
-  r         刷新数据
-  ?         显示帮助
-
-图标说明:
-  🦞  OpenClaw 员工    💬  未读消息
-  🟢  空闲状态         🟡  工作中
-  ⚫  离线状态         📋  当前任务
+📋 图标说明:
+  🦞 员工    💬 未读消息
+  🟢 空闲    🟡 工作中    ⚫ 离线
         """
-        self.notify(help_text, severity="information", timeout=15)
+        self.notify(help_text, severity="information", timeout=20)

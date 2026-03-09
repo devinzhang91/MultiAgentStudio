@@ -4,13 +4,11 @@ OpenClaw TUI Studio - 主应用入口
 🦞 可视化的二进制 OpenClaw 工作室
 在终端中管理你的 OpenClaw AI 员工团队
 
-操作指南:
-- ↑/↓/←/→ : 导航员工卡片
-- Tab     : 切换焦点
-- Enter   : 进入对话/发送消息
-- Space   : 查看员工详情
-- Esc     : 返回工作室
-- q       : 退出应用
+支持鼠标 + 键盘双模式操作
+- 鼠标：点击卡片进入对话，点击按钮执行操作
+- 键盘：方向键导航，Enter 确认，Esc 返回
+
+兼容：任何支持终端的系统（包括无 GUI 的服务器）
 """
 import asyncio
 from typing import Optional, Any
@@ -27,9 +25,16 @@ from .openclaw.models import Employee, Task, Message
 
 
 class OpenClawStudioApp(App):
-    """OpenClaw TUI Studio 主应用类"""
+    """OpenClaw TUI Studio 主应用类
+    
+    支持鼠标和键盘双模式操作
+    兼容：本地终端、SSH 远程、无 GUI 服务器
+    """
     
     CSS_PATH = "ui/styles/styles.css"
+    
+    # 启用鼠标支持
+    mouse_enabled = True
     
     # 响应式状态
     connected = reactive(False)
@@ -72,11 +77,17 @@ class OpenClawStudioApp(App):
     
     async def on_mount(self):
         """应用挂载时调用"""
+        # 检测终端是否支持鼠标
+        if self.mouse_enabled:
+            self.notify("🖱️ 鼠标已启用 │ ⌨️ 键盘可用 │ 按 ? 查看帮助", 
+                       severity="information", timeout=5)
+        else:
+            self.notify("⌨️ 键盘模式 │ 按 ? 查看帮助", 
+                       severity="information", timeout=5)
+        
         if self.config.get("api_key"):
             await self._init_openclaw_client()
         else:
-            self.notify("🦞 演示模式 - 使用方向键导航，Enter 对话，q 退出", 
-                       severity="information", timeout=5)
             self.state_manager.connected = False
     
     async def _init_openclaw_client(self):
@@ -104,7 +115,7 @@ class OpenClawStudioApp(App):
             
             self.connected = True
             self.state_manager.connected = True
-            self.notify("🦞 已连接到 OpenClaw！按 ? 查看帮助", severity="information")
+            self.notify("🦞 已连接到 OpenClaw", severity="information")
             
         except Exception as e:
             self.notify(f"❌ 连接失败: {e}", severity="error")
