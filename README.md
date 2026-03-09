@@ -478,13 +478,63 @@ vim config.yaml
 
 ### 运行
 
+#### 方式 1: 使用启动脚本（推荐）
+
 ```bash
-# 方式1: 作为模块运行
+# 首次运行：自动创建虚拟环境、安装依赖并启动
+./start.sh
+
+# 停止程序
+./stop.sh
+
+# 查看日志
+tail -f .openclaw.log
+```
+
+#### 方式 2: 手动运行
+
+```bash
+# 创建虚拟环境
+python3 -m venv .venv
+
+# 激活虚拟环境
+source .venv/bin/activate
+
+# 安装依赖
+pip install -r requirements.txt
+
+# 运行
 python -m openclaw_tui
 
-# 方式2: 使用入口脚本
+# 或直接使用入口脚本
 python src/openclaw_tui/app.py
 ```
+
+### 脚本使用说明
+
+**start.sh - 启动脚本:**
+```bash
+./start.sh [参数]
+```
+功能:
+- ✅ 自动检查 Python 版本 (>=3.9)
+- ✅ 自动创建虚拟环境 (`.venv/`)
+- ✅ 自动安装依赖 (`requirements.txt`)
+- ✅ 自动记录进程 PID (`.openclaw.pid`)
+- ✅ 自动记录日志 (`.openclaw.log`)
+- ✅ 防止重复启动
+- ✅ 支持彩色输出
+
+**stop.sh - 停止脚本:**
+```bash
+./stop.sh
+```
+功能:
+- ✅ 优雅停止进程 (先发送 TERM 信号)
+- ✅ 超时后自动强制终止 (KILL 信号)
+- ✅ 自动清理 PID 文件
+- ✅ 显示最后 10 行日志
+- ✅ 支持强制清理残留进程
 
 ### 基本操作
 
