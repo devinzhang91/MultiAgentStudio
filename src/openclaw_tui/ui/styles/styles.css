@@ -1,106 +1,120 @@
-/* OpenClaw TUI Studio - 样式文件 */
+/* OpenClaw TUI Studio - 全局样式 */
 
-/* 基础样式 */
+/* 基础设置 */
+* {
+    transition: background 150ms linear;
+}
+
+/* 应用整体样式 */
 Screen {
-    align: center middle;
+    background: $surface;
+    color: $text;
 }
 
-/* 员工卡片样式 */
-EmployeeCard {
-    width: 30;
-    height: 10;
-    border: solid $primary;
-    background: $surface-darken-1;
-    padding: 1;
+/* 头部样式 */
+Header {
+    background: $primary-darken-2;
+    color: $text;
+    text-style: bold;
 }
 
-EmployeeCard:hover {
-    background: $surface-darken-2;
-    border: solid $primary-lighten-2;
+Header .header-title {
+    text-align: center;
 }
 
-EmployeeCard:focus {
-    border: solid $accent;
+Header .header-clock {
+    color: $text-muted;
 }
 
-/* 状态指示器 */
-StatusIndicator {
-    width: auto;
-    height: auto;
-}
-
-StatusIndicator.active {
-    color: $success;
-}
-
-StatusIndicator.busy {
-    color: $warning;
-}
-
-StatusIndicator.offline {
-    color: $error;
-}
-
-/* 聊天面板 */
-ChatPanel {
-    border: solid $primary;
-    padding: 1;
-}
-
-/* 消息气泡 */
-MessageBubble {
-    width: auto;
-    height: auto;
-    padding: 1;
-    margin: 1;
-}
-
-MessageBubble.user {
-    align: right middle;
+/* 底部样式 */
+Footer {
     background: $primary-darken-2;
 }
 
-MessageBubble.employee {
-    align: left middle;
-    background: $surface-darken-2;
-}
-
-/* 侧边栏 */
-Sidebar {
-    width: 20;
-    height: 100%;
-    border: solid $primary;
-    background: $surface-darken-1;
-}
-
-/* 状态栏 */
-StatusBar {
-    height: 1;
-    dock: bottom;
-    background: $surface-darken-2;
-    color: $text;
-    padding: 0 1;
-}
-
-/* 输入框 */
-Input {
-    border: solid $primary;
-}
-
-Input:focus {
-    border: solid $accent;
-}
-
-/* 按钮 */
-Button {
-    width: auto;
-    min-width: 8;
-}
-
-Button.primary {
+Footer .footer-key {
     background: $primary;
+    color: $text;
+}
+
+/* 按钮样式 */
+Button {
+    background: $primary;
+    color: $text;
+    border: none;
+    text-style: bold;
+    padding: 0 2;
 }
 
 Button:hover {
     background: $primary-lighten-2;
+}
+
+Button.primary {
+    background: $success;
+}
+
+Button.primary:hover {
+    background: $success-lighten-2;
+}
+
+Button.error {
+    background: $error;
+}
+
+Button.error:hover {
+    background: $error-lighten-2;
+}
+
+/* 输入框样式 */
+Input {
+    background: $surface-darken-1;
+    border: solid $primary-darken-2;
+    padding: 0 1;
+}
+
+Input:focus {
+    border: solid $primary;
+}
+
+/* 静态文本 */
+Static {
+    content-align: left top;
+}
+
+/* 滚动区域 */
+RichLog {
+    background: $surface-darken-1;
+    border: solid $primary-darken-2;
+    padding: 1;
+}
+
+/* 提示通知 */
+Toast {
+    border: solid $primary;
+    background: $surface-darken-1;
+}
+
+Toast.toast-information {
+    border: solid $success;
+}
+
+Toast.toast-warning {
+    border: solid $warning;
+}
+
+Toast.toast-error {
+    border: solid $error;
+}
+
+/* 响应式布局辅助 */
+.centered {
+    align: center middle;
+}
+
+.full-width {
+    width: 100%;
+}
+
+.full-height {
+    height: 100%;
 }
