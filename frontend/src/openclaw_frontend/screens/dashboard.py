@@ -11,7 +11,7 @@ class EmployeeCard(Vertical):
     DEFAULT_CSS = """
     EmployeeCard {
         width: 28;
-        height: 12;
+        height: 14;
         background: $surface;
         border: solid $primary-darken-2;
         padding: 0;
@@ -89,148 +89,41 @@ class EmployeeCard(Vertical):
             self.app.show_employee_detail(self.emp.get("id"))
 
 
-class AddEmployeeScreen(Screen):
-    """添加员工界面"""
-    
-    BINDINGS = [("escape, q", "go_back", "返回")]
-    
-    def compose(self):
-        yield Header(show_clock=True)
-        
-        with Container(classes="container"):
-            yield Static("🦞 添加新员工", classes="title")
-            
-            with Vertical(classes="form"):
-                yield Label("基本信息", classes="section-title")
-                yield Input(placeholder="员工名称 *", id="name")
-                yield Input(placeholder="角色（如：代码审查专家）", id="role", value="OpenClaw 员工")
-                
-                yield Static("", classes="divider")
-                yield Label("OpenClaw 连接配置", classes="section-title")
-                yield Input(placeholder="Base URL * (如: wss://gateway.openclaw.com)", id="base_url")
-                yield Input(placeholder="Token *", id="token", password=True)
-                yield Input(placeholder="Session Key", id="session_key", value="default")
-                yield Input(placeholder="超时时间（秒）", id="timeout", value="120")
-                
-                with Horizontal(classes="switch-row"):
-                    yield Label("启用连接:")
-                    yield Switch(id="enabled", value=True)
-            
-            with Horizontal(classes="button-row"):
-                yield Button("← 返回", id="back", variant="default")
-                yield Button("✅ 创建员工", id="create", variant="primary")
-        
-        yield Footer()
-    
-    DEFAULT_CSS = """
-    AddEmployeeScreen { align: center middle; }
-    AddEmployeeScreen .container { 
-        width: 80; height: auto; border: solid $primary; padding: 1 2;
-    }
-    AddEmployeeScreen .title { 
-        text-style: bold; height: 3;
-        content-align: center middle;
-        border-bottom: solid $primary-darken-2;
-    }
-    AddEmployeeScreen .form { height: auto; padding: 1 0; }
-    AddEmployeeScreen .section-title {
-        text-style: bold; color: $accent; margin: 1 0;
-    }
-    AddEmployeeScreen .divider {
-        height: 1; background: $primary-darken-2; margin: 1 0;
-    }
-    AddEmployeeScreen Input { margin: 1 0; }
-    AddEmployeeScreen .switch-row { height: 3; align: left middle; }
-    AddEmployeeScreen .switch-row Label { margin-right: 2; }
-    AddEmployeeScreen .button-row {
-        height: 3; align: center middle; margin-top: 1;
-    }
-    AddEmployeeScreen .button-row Button { margin: 0 1; }
-    """
-    
-    def on_button_pressed(self, event):
-        if event.button.id == "back":
-            self.action_go_back()
-        elif event.button.id == "create":
-            self.create_employee()
-    
-    async def create_employee(self):
-        name = self.query_one("#name", Input).value.strip()
-        role = self.query_one("#role", Input).value.strip()
-        base_url = self.query_one("#base_url", Input).value.strip()
-        token = self.query_one("#token", Input).value.strip()
-        session_key = self.query_one("#session_key", Input).value.strip()
-        timeout_str = self.query_one("#timeout", Input).value.strip()
-        enabled = self.query_one("#enabled", Switch).value
-        
-        if not name:
-            self.notify("❌ 请输入员工名称", severity="error"); return
-        if not base_url:
-            self.notify("❌ 请输入 Base URL", severity="error"); return
-        if not token:
-            self.notify("❌ 请输入 Token", severity="error"); return
-        
-        try:
-            timeout = int(timeout_str)
-        except ValueError:
-            timeout = 120
-        
-        data = {
-            "name": name,
-            "role": role,
-            "config": {
-                "base_url": base_url,
-                "token": token,
-                "session_key": session_key,
-                "timeout": timeout,
-                "enabled": enabled,
-            }
-        }
-        
-        self.notify("📝 创建员工...")
-        try:
-            await self.app.client.post("/api/employees", json=data)
-            self.notify(f"✅ 员工 '{name}' 创建成功!")
-            self.action_go_back()
-        except Exception as e:
-            self.notify(f"❌ 创建失败: {e}", severity="error")
-    
-    def action_go_back(self):
-        self.app.pop_screen()
-
-
 class DashboardScreen(Screen):
     """主面板"""
     
     BINDINGS = [
         ("q", "quit", "退出"),
-        ("r", "refresh", "刷新"),
-        ("a", "add_employee", "添加员工"),
-        ("?", "show_help", "帮助"),
+        ("r", "action_refresh", "刷新"),
+        ("a", "action_add_employee", "添加员工"),
+        ("?", "action_show_help", "帮助"),
     ]
     
-    # 使用 reactive 变量
     employees = reactive(list)
-    connection_status = reactive("🟡 连接中...")
+    
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.employees = []
     
     def compose(self):
         yield Header(show_clock=True)
         
         with Vertical(classes="main"):
             with Horizontal(classes="toolbar"):
-                yield Button("🔄 刷新 (r)", id="refresh", variant="primary")
-                yield Button("➕ 添加员工 (a)", id="add", variant="success")
-                yield Button("❓ 帮助 (?)", id="help", variant="default")
+                yield Button("🔄 刷新 (r)", id="refresh-btn", variant="primary")
+                yield Button("➕ 添加员工 (a)", id="add-btn", variant="success")
+                yield Button("❓ 帮助 (?)", id="help-btn", variant="default")
             
-            yield Static("🦞 OpenClaw 工作室 - 点击卡片对话，Space 查看属性", classes="subtitle")
+            yield Static("🦞 OpenClaw 工作室", classes="title")
+            yield Static("点击卡片进入对话，按 Space 查看属性", classes="subtitle")
             
-            # 员工卡片区域
-            with Vertical(id="employee-container"):
-                pass  # 动态填充
+            # 员工列表容器
+            with Vertical(id="employee-list"):
+                yield Static("加载中...", id="loading-text")
             
             with Horizontal(classes="status-bar"):
-                yield Static(self.connection_status, id="conn-status")
-                yield Static("🦞 0", id="emp-count")
+                yield Static("🟡 连接中...", id="status-text")
+                yield Static("", id="count-text")
         
         yield Footer()
     
@@ -238,14 +131,27 @@ class DashboardScreen(Screen):
     DashboardScreen { layout: vertical; }
     DashboardScreen .main { height: 1fr; }
     DashboardScreen .toolbar {
-        height: 3; background: $surface-darken-1;
-        padding: 0 2; align: left middle;
+        height: 3; 
+        background: $surface-darken-1;
+        padding: 0 2;
+        align: left middle;
     }
-    DashboardScreen .toolbar Button { margin-right: 1; }
+    DashboardScreen .toolbar Button { 
+        margin-right: 1; 
+    }
+    DashboardScreen .title {
+        height: 2;
+        text-style: bold;
+        padding: 0 2;
+        content-align: center middle;
+    }
     DashboardScreen .subtitle {
-        height: 2; padding: 0 2; color: $text-muted;
+        height: 1; 
+        padding: 0 2; 
+        color: $text-muted;
+        content-align: center middle;
     }
-    DashboardScreen #employee-container {
+    DashboardScreen #employee-list {
         height: 1fr;
         padding: 1 2;
         layout: grid;
@@ -253,74 +159,119 @@ class DashboardScreen(Screen):
         grid-columns: 1fr 1fr 1fr 1fr;
         grid-gutter: 1;
     }
+    DashboardScreen #loading-text {
+        column-span: 4;
+        content-align: center middle;
+        color: $text-muted;
+    }
     DashboardScreen .status-bar {
-        height: 1; background: $primary-darken-3;
-        padding: 0 2; align: left middle;
+        height: 1; 
+        background: $primary-darken-3;
+        padding: 0 2; 
+        align: left middle;
     }
     """
     
     def on_mount(self):
-        """挂载后自动加载数据"""
-        self.load_employees()
+        """挂载后加载数据"""
+        self.run_worker(self.load_employees)
     
     async def load_employees(self):
-        """异步加载员工列表"""
+        """加载员工列表"""
         try:
+            print("[Dashboard] 开始加载员工...")
             data = await self.app.client.get_employees()
-            self.employees = data  # 这会触发 watch_employees
-            self.connection_status = "🟢 已连接"
+            print(f"[Dashboard] 加载到 {len(data)} 个员工")
+            self.employees = data
         except Exception as e:
             print(f"[Dashboard] 加载失败: {e}")
-            self.connection_status = f"🔴 错误: {e}"
+            self.update_status(f"🔴 错误: {e}")
     
     def watch_employees(self, employees):
-        """监听 employees 变化，更新显示"""
+        """监听员工数据变化"""
+        print(f"[Dashboard] watch_employees 被调用，{len(employees)} 个员工")
+        
         try:
-            container = self.query_one("#employee-container")
+            # 获取容器
+            container = self.query_one("#employee-list")
             
-            # 清空现有内容
+            # 清空现有内容（保留 loading-text）
             for child in list(container.children):
-                child.remove()
+                if child.id != "loading-text":
+                    child.remove()
+            
+            # 隐藏加载文本
+            try:
+                loading = self.query_one("#loading-text")
+                loading.styles.display = "none"
+            except:
+                pass
             
             # 添加员工卡片
-            for emp in employees:
-                container.mount(EmployeeCard(emp))
-            
-            # 更新计数
-            online = sum(1 for e in employees if e.get("status") != "offline")
-            self.query_one("#emp-count", Static).update(f"🦞 {online}/{len(employees)}")
-            
+            if employees:
+                for emp in employees:
+                    card = EmployeeCard(emp)
+                    container.mount(card)
+                
+                # 更新状态
+                self.update_status("🟢 已连接")
+                online = sum(1 for e in employees if e.get("status") != "offline")
+                self.update_count(f"🦞 {online}/{len(employees)}")
+            else:
+                self.update_status("⚠️ 无员工")
+                self.update_count("")
+                
+                # 显示空提示
+                container.mount(Static("暂无员工，按 'a' 添加", classes="empty-hint"))
+                
         except Exception as e:
-            print(f"[Dashboard] 更新显示错误: {e}")
+            print(f"[Dashboard] watch_employees 错误: {e}")
+            import traceback
+            traceback.print_exc()
     
-    def watch_connection_status(self, status):
-        """监听连接状态变化"""
+    def update_status(self, text: str):
+        """更新状态文本"""
         try:
-            self.query_one("#conn-status", Static).update(status)
-        except:
-            pass
+            status = self.query_one("#status-text", Static)
+            status.update(text)
+        except Exception as e:
+            print(f"[Dashboard] 更新状态失败: {e}")
+    
+    def update_count(self, text: str):
+        """更新计数文本"""
+        try:
+            count = self.query_one("#count-text", Static)
+            count.update(text)
+        except Exception as e:
+            print(f"[Dashboard] 更新计数失败: {e}")
     
     def on_button_pressed(self, event):
-        if event.button.id == "refresh":
-            self.load_employees()
-        elif event.button.id == "add":
-            self.push_screen(AddEmployeeScreen())
-        elif event.button.id == "help":
-            self.show_help()
+        """按钮点击处理"""
+        btn_id = event.button.id
+        if btn_id == "refresh-btn":
+            self.action_refresh()
+        elif btn_id == "add-btn":
+            self.action_add_employee()
+        elif btn_id == "help-btn":
+            self.action_show_help()
     
     def action_refresh(self):
-        self.load_employees()
+        """刷新"""
+        self.run_worker(self.load_employees)
     
     def action_add_employee(self):
+        """添加员工"""
+        from .add_employee import AddEmployeeScreen
         self.push_screen(AddEmployeeScreen())
     
-    def show_help(self):
+    def action_show_help(self):
+        """显示帮助"""
         help_text = """
-🖱️ 鼠标:
-  点击卡片   进入对话
-  点击按钮   执行操作
+🖱️ 鼠标操作:
+  点击卡片     进入对话
+  点击按钮     执行操作
 
-⌨️ 键盘:
+⌨️ 键盘操作:
   Enter      进入对话
   Space      查看属性
   a          添加新员工
