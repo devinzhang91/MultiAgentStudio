@@ -174,44 +174,59 @@ class DashboardScreen(Screen):
     
     def on_mount(self):
         """挂载后加载数据"""
-        self.run_worker(self.load_employees)
+        print("[Dashboard] on_mount 被调用")
+        # 延迟一点再加载，确保 DOM 已准备好
+        self.set_timer(0.5, self.load_employees)
     
-    async def load_employees(self):
+    def load_employees(self):
         """加载员工列表"""
-        try:
-            print("[Dashboard] 开始加载员工...")
-            data = await self.app.client.get_employees()
-            print(f"[Dashboard] 加载到 {len(data)} 个员工")
-            self.employees = data
-        except Exception as e:
-            print(f"[Dashboard] 加载失败: {e}")
-            self.update_status(f"🔴 错误: {e}")
+        print("[Dashboard] 开始加载员工...")
+        
+        async def _load():
+            try:
+                data = await self.app.client.get_employees()
+                print(f"[Dashboard] 加载到 {len(data)} 个员工: {[e.get('name') for e in data]}")
+                # 直接更新 UI
+                self.update_employee_list(data)
+            except Exception as e:
+                print(f"[Dashboard] 加载失败: {e}")
+                self.update_status(f"🔴 错误: {e}")
+        
+        self.run_worker(_load)
     
-    def watch_employees(self, employees):
-        """监听员工数据变化"""
-        print(f"[Dashboard] watch_employees 被调用，{len(employees)} 个员工")
+    def update_employee_list(self, employees):
+        """更新员工列表显示"""
+        print(f"[Dashboard] update_employee_list: {len(employees)} 个员工")
         
         try:
             # 获取容器
             container = self.query_one("#employee-list")
+            print(f"[Dashboard] 找到容器: {container}")
             
             # 清空现有内容（保留 loading-text）
             for child in list(container.children):
                 if child.id != "loading-text":
                     child.remove()
+            print("[Dashboard] 清空完成")
             
             # 隐藏加载文本
             try:
                 loading = self.query_one("#loading-text")
                 loading.styles.display = "none"
-            except:
-                pass
+                print("[Dashboard] 隐藏 loading")
+            except Exception as e:
+                print(f"[Dashboard] 隐藏 loading 失败: {e}")
             
             # 添加员工卡片
             if employees:
+                print(f"[Dashboard] 添加 {len(employees)} 个卡片")
                 for emp in employees:
-                    card = EmployeeCard(emp)
-                    container.mount(card)
+                    try:
+                        card = EmployeeCard(emp)
+                        container.mount(card)
+                        print(f"[Dashboard] 添加卡片: {emp.get('name')}")
+                    except Exception as e:
+                        print(f"[Dashboard] 添加卡片失败: {e}")
                 
                 # 更新状态
                 self.update_status("🟢 已连接")
@@ -225,9 +240,15 @@ class DashboardScreen(Screen):
                 container.mount(Static("暂无员工，按 'a' 添加", classes="empty-hint"))
                 
         except Exception as e:
-            print(f"[Dashboard] watch_employees 错误: {e}")
+            print(f"[Dashboard] update_employee_list 错误: {e}")
             import traceback
             traceback.print_exc()
+    
+    def watch_employees(self, employees):
+        """监听员工数据变化（备用）"""
+        print(f"[Dashboard] watch_employees 被调用，{len(employees)} 个员工")
+        if self.is_mounted:
+            self.update_employee_list(employees)
     
     def update_status(self, text: str):
         """更新状态文本"""
