@@ -1,0 +1,262 @@
+"""
+工作室模板基类
+定义工作室模板的接口和规范
+"""
+
+from abc import ABC, abstractmethod
+from typing import List, Dict, Any
+from dataclasses import dataclass
+
+
+@dataclass
+class AgentConfig:
+    """Agent配置数据类"""
+    id: str
+    employee_id: str
+    name: str
+    display_name: str
+    role: str
+    agent_type: str  # "main_brain" | "specialist" | "coordinator"
+    is_main_brain: bool
+    emoji: str
+    avatar: str
+    personality: str
+    specialty: str
+    allowed_tools: List[str]
+    denied_tools: List[str]
+    model: str = "volcengine/glm-4.7"
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """转换为字典"""
+        return {
+            "id": self.id,
+            "name": self.name,
+            "display_name": self.display_name,
+            "role": self.role,
+            "agent_type": self.agent_type,
+            "is_main_brain": self.is_main_brain,
+            "emoji": self.emoji,
+            "avatar": self.avatar,
+            "personality": self.personality,
+            "specialty": self.specialty,
+            "allowed_tools": self.allowed_tools,
+            "denied_tools": self.denied_tools,
+            "model": self.model,
+        }
+
+
+class StudioTemplate(ABC):
+    """工作室模板基类"""
+    
+    # 模板元数据
+    name: str = ""
+    description: str = ""
+    default_architecture: str = "hybrid"  # centralized | decentralized | hybrid
+    
+    @abstractmethod
+    def get_agents(self) -> List[AgentConfig]:
+        """
+        返回Agent配置列表
+        
+        Returns:
+            List[AgentConfig]: Agent配置列表
+        """
+        pass
+    
+    @abstractmethod
+    def get_agent_to_agent_config(self) -> Dict[str, Any]:
+        """
+        返回agentToAgent配置
+        
+        Returns:
+            Dict: agentToAgent配置
+        """
+        pass
+
+    def get_primary_agent(self) -> AgentConfig:
+        """返回主脑角色；若模板未显式声明，则取首位成员"""
+        agents = self.get_agents()
+        for agent in agents:
+            if agent.is_main_brain:
+                return agent
+        return agents[0]
+
+    def get_workspace_map(self, base_workspace: str, architecture: str) -> Dict[str, str]:
+        """根据架构生成每个Agent的工作空间布局"""
+        primary_agent = self.get_primary_agent()
+        shared_workspace = f"{base_workspace}/workspace/team-shared"
+
+        workspace_map: Dict[str, str] = {}
+        for agent in self.get_agents():
+            if architecture == "decentralized":
+                workspace_map[agent.id] = shared_workspace
+            elif architecture == "hybrid":
+                if agent.id == primary_agent.id:
+                    workspace_map[agent.id] = f"{base_workspace}/workspace/{agent.id}"
+                else:
+                    workspace_map[agent.id] = shared_workspace
+            else:
+                workspace_map[agent.id] = f"{base_workspace}/workspace/{agent.id}"
+
+        return workspace_map
+    
+    def get_openclaw_agents_config(self, base_workspace: str, architecture: str) -> List[Dict[str, Any]]:
+        """
+        生成OpenClaw格式的agents配置
+        
+        注意：只包含OpenClaw识别的字段，移除不被识别的字段：
+        - subagents (maxConcurrent, allowlist)
+        - agentToAgent
+        
+        Args:
+            base_workspace: 基础工作空间路径
+            
+        Returns:
+            List[Dict]: OpenClaw格式的agents列表
+        """
+        agents = []
+        workspace_map = self.get_workspace_map(base_workspace, architecture)
+        for agent in self.get_agents():
+            workspace = workspace_map[agent.id]
+            
+            # 构建agent配置（只包含OpenClaw识别的字段）
+            agent_config = {
+                "id": agent.id,
+                "name": agent.id,
+                "workspace": workspace,
+                "agentDir": f"~/.openclaw/agents/{agent.id}/agent",
+                "identity": {
+                    "name": agent.name,
+                    "emoji": agent.emoji
+                }
+            }
+            
+            # 注意：OpenClaw不识别以下字段，已移除
+            # - subagents (包含maxConcurrent, allowlist)
+            # - agentToAgent
+            
+            agents.append(agent_config)
+        
+        return agents
+    
+    def get_employees_config(self, base_workspace: str, architecture: str) -> List[Dict[str, Any]]:
+        """
+        生成MushTech Studio格式的employees配置
+        
+        Args:
+            base_workspace: 基础工作空间路径
+            
+        Returns:
+            List[Dict]: employees配置列表
+        """
+        employees = []
+        workspace_map = self.get_workspace_map(base_workspace, architecture)
+        for agent in self.get_agents():
+            emp_id = agent.employee_id or f"emp-{agent.id.replace('_', '-')}"
+            workspace = workspace_map[agent.id]
+            
+            employee = {
+                "id": emp_id,
+                "name": agent.name,
+                "display_name": agent.display_name,
+                "role": agent.role,
+                "agent_id": agent.id,
+                "agent_type": agent.agent_type,
+                "is_main_brain": agent.is_main_brain,
+                "emoji": agent.emoji,
+                "avatar": agent.avatar,
+                "workspace": workspace,
+                "agent_dir": f"~/.openclaw/agents/{agent.id}/agent",
+                "session_key": f"agent:{agent.id}:main",
+                "model": agent.model,
+                "personality": agent.personality,
+                "specialty": agent.specialty,
+                "allowed_tools": agent.allowed_tools,
+                "denied_tools": agent.denied_tools,
+                "config": {"session_key": f"agent:{agent.id}:main"},
+                "status": "offline",
+                "current_task": "",
+                "unread_count": 0,
+                "enabled": True,
+                "last_error": "",
+            }
+            employees.append(employee)
+        
+        return employees
+    
+    def get_full_openclaw_config(self, base_workspace: str, architecture: str) -> Dict[str, Any]:
+        """
+        生成完整的OpenClaw配置片段
+        
+        注意：只包含OpenClaw识别的字段
+        
+        Args:
+            base_workspace: 基础工作空间路径
+            
+        Returns:
+            Dict: 包含agents.list的配置
+        """
+        return {
+            "agents": {
+                "list": self.get_openclaw_agents_config(base_workspace, architecture)
+            }
+        }
+
+
+def get_template(studio_type: str) -> StudioTemplate:
+    """
+    根据类型获取模板实例
+    
+    Args:
+        studio_type: 工作室类型
+        
+    Returns:
+        StudioTemplate: 模板实例
+    """
+    from .software_engineering import SoftwareEngineeringTemplate
+    from .remotion_video import RemotionVideoTemplate
+    from .stock_analysis import StockAnalysisTemplate
+    
+    templates = {
+        "software_engineering": SoftwareEngineeringTemplate,
+        "remotion_video": RemotionVideoTemplate,
+        "stock_analysis": StockAnalysisTemplate,
+    }
+    
+    template_class = templates.get(studio_type, SoftwareEngineeringTemplate)
+    return template_class()
+
+
+def list_templates() -> List[Dict[str, str]]:
+    """
+    列出所有可用模板
+    
+    Returns:
+        List[Dict]: 模板信息列表
+    """
+    from .software_engineering import SoftwareEngineeringTemplate
+    from .remotion_video import RemotionVideoTemplate
+    from .stock_analysis import StockAnalysisTemplate
+    
+    templates = [
+        {
+            "id": "software_engineering",
+            "name": SoftwareEngineeringTemplate.name,
+            "description": SoftwareEngineeringTemplate.description,
+            "default_architecture": SoftwareEngineeringTemplate.default_architecture,
+        },
+        {
+            "id": "remotion_video",
+            "name": RemotionVideoTemplate.name,
+            "description": RemotionVideoTemplate.description,
+            "default_architecture": RemotionVideoTemplate.default_architecture,
+        },
+        {
+            "id": "stock_analysis",
+            "name": StockAnalysisTemplate.name,
+            "description": StockAnalysisTemplate.description,
+            "default_architecture": StockAnalysisTemplate.default_architecture,
+        },
+    ]
+    
+    return templates
