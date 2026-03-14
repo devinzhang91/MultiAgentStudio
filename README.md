@@ -19,7 +19,6 @@
 
 ### 与 OpenClaw 的关系
 
-- **OpenClaw** 是 MushTech 推出的 AI 智能体框架和 Gateway 服务，提供了多智能体的底层能力
 - **MultiAgentStudio** 是 OpenClaw 的 **TUI 客户端**，提供了可视化的管理界面
 - 通过本工具，你可以：
   - 可视化配置和管理 OpenClaw Gateway 连接
@@ -53,7 +52,7 @@
 预置多种团队配置模板：
 - **Remotion 视频工作室**：视频导演、脚本编剧、视觉设计师、后期剪辑师、Remotion开发专员
 - **软件工程团队**：产品经理、UI设计师、程序员、测试工程师、文档工程师
-- **股票分析团队**：策略分析师、技术分析师、基本面分析师、风险评估师
+- **股票分析团队**：首席分析师、宏观研究员、行业研究员、技术分析师、风险评估师
 
 ---
 
@@ -100,22 +99,23 @@ openclaw-tui-studio/
 │   ├── cmd_executor.py         # MushTech CMD 命令执行器
 │   ├── logger.py               # 日志模块
 │   ├── cli.py                  # 命令行接口
+│   ├── utils.py                # 工具函数
+│   ├── agent_initializer.py    # 智能体初始化器
 │   └── templates/              # 团队模板
 │       ├── __init__.py
 │       ├── base.py             # 基础模板类
 │       ├── remotion_video.py   # Remotion视频工作室模板
 │       ├── software_engineering.py  # 软件工程团队模板
-│       └── stock_analysis.py   # 股票分析团队模板
-│
-├── scripts/                    # 辅助脚本
-│   └── setup_mushtech_team.py  # 初始化团队脚本
+│       ├── stock_analysis.py   # 股票分析团队模板
+│       └── prompts/            # 员工性格定义
+│           ├── remotion_video_docs.json
+│           ├── software_engineering_docs.json
+│           └── stock_analysis_docs.json
 │
 ├── data/                       # 数据存储
 │   ├── employees.json          # 员工数据存储
-│   ├── messages_*.jsonl        # 各智能体消息历史
 │   ├── multi_agent_config.json # 多智能体配置
-│   ├── studio_config.json      # 工作室配置
-│   └── identities/             # 员工身份密钥（Ed25519）
+│   └── identities/             # 员工身份密钥（Ed25519，不提交git）
 │
 ├── logs/                       # 运行日志
 │   └── mushtech_*.log          # 应用日志文件
@@ -125,7 +125,7 @@ openclaw-tui-studio/
 │   ├── UI_CHAT.png             # 聊天界面截图
 │   └── UI_CONFIG.png           # 设置界面截图
 │
-├── run.sh                      # 启动脚本
+├── run.sh                      # 一键启动脚本
 ├── README.md                   # 项目说明
 └── LICENSE                     # 许可证
 ```
@@ -145,7 +145,7 @@ openclaw-tui-studio/
 ```
 用户请求
     ↓
-🎯 主脑（Product Manager）
+🎯 主脑（Product Manager/Lead Analyst/Video Director）
     ↓ agentToAgent 通信
 ├───├───├───├───┐
 ◇       ◇       ◇       ◇
@@ -191,17 +191,38 @@ UI     开发    测试    文档
 
 ## 🚀 部署步骤
 
-### 1. 安装 OpenClaw CLI
+### 方式一：一键部署脚本（推荐）
+
+使用 `run.sh` 脚本自动完成环境检查和启动：
 
 ```bash
-# 安装 OpenClaw CLI
-npm install -g @openclaw/cli
+# 1. 克隆项目
+git clone https://github.com/devinzhang91/MultiAgentStudio.git
+cd MultiAgentStudio
 
-# 验证安装
-openclaw --version
+# 2. 运行一键启动脚本
+./run.sh
 ```
 
-### 2. 克隆项目并安装依赖
+**脚本功能说明：**
+- ✅ 自动检查并创建 Python 虚拟环境（`.venv`）
+- ✅ 自动安装依赖包（`textual`, `aiohttp`, `cryptography`）
+- ✅ 自动激活虚拟环境
+- ✅ 启动 TUI 应用
+
+**脚本参数：**
+```bash
+# 带参数运行（如 reset 重置）
+./run.sh reset
+```
+
+### 方式二：手动部署
+
+#### 1. 安装 OpenClaw
+
+请参考 [OpenClaw 官方安装文档](https://docs.openclaw.ai/zh-CN/install) 完成 OpenClaw CLI 和 Gateway 的安装配置。
+
+#### 2. 克隆项目并安装依赖
 
 ```bash
 # 克隆项目
@@ -217,18 +238,11 @@ source .venv/bin/activate  # Linux/Mac
 pip install textual aiohttp cryptography
 ```
 
-### 3. 配置 Gateway
+#### 3. 配置 Gateway
 
 确保你有一个运行的 OpenClaw Gateway，获取以下信息：
 - Gateway URL（如：`http://127.0.0.1:18789`）
 - Gateway Token（认证令牌）
-
-### 4. 初始化团队（可选）
-
-```bash
-# 使用脚本初始化默认团队
-python3 scripts/setup_mushtech_team.py
-```
 
 ---
 
@@ -237,7 +251,7 @@ python3 scripts/setup_mushtech_team.py
 ### 启动应用
 
 ```bash
-# 方式1：使用启动脚本
+# 方式1：使用启动脚本（推荐）
 ./run.sh
 
 # 方式2：直接运行
@@ -302,9 +316,9 @@ python3 mushtech_studio/app.py
 - **工作室配置**: `data/studio_config.json`
 - **员工数据**: `data/employees.json`
 - **多智能体配置**: `data/multi_agent_config.json`
-- **消息历史**: `data/messages_<agent_id>.jsonl`
+- **消息历史**: `data/messages_<agent_id>.jsonl`（不提交git）
 
-### 配置示例
+### 基础配置示例
 
 ```json
 // data/studio_config.json
@@ -312,17 +326,106 @@ python3 mushtech_studio/app.py
   "gateway_url": "http://127.0.0.1:18789",
   "gateway_token": "your-token-here",
   "architecture": "hybrid",
-  "studio_type": "remotion_video",
+  "studio_type": "software_engineering",
   "base_workspace": "/path/to/workspace"
 }
 ```
+
+### 主脑 Channel 设置（飞书集成）
+
+要实现通过飞书向小组长（主脑）下达命令，需要配置主脑的 Channel 绑定：
+
+```json
+// data/studio_config.json
+{
+  "gateway_url": "http://127.0.0.1:18789",
+  "gateway_token": "your-token-here",
+  "architecture": "hybrid",
+  "studio_type": "software_engineering",
+  "base_workspace": "/path/to/workspace",
+  
+  "lead_channels": {
+    "mush-pm": {
+      "channel_id": "your_feishu_channel_id",
+      "channel_type": "feishu",
+      "webhook_url": "https://open.feishu.cn/open-apis/bot/v2/hook/xxx"
+    }
+  }
+}
+```
+
+**配置说明：**
+- `lead_channels`: 定义主脑与通讯频道的绑定关系
+- `mush-pm`: 主脑员工ID（根据模板不同，可能是 `video-director`、`lead-analyst` 等）
+- `channel_id`: 飞书频道ID
+- `channel_type`: 通讯类型（目前支持 `feishu`）
+- `webhook_url`: 飞书机器人 Webhook 地址
+
+**获取飞书 Webhook：**
+1. 在飞书群中添加自定义机器人
+2. 复制机器人的 Webhook 地址
+3. 将地址填入配置中的 `webhook_url`
+
+**使用方式：**
+- 在绑定的飞书频道中@机器人发送消息
+- 消息会自动转发给对应的主脑智能体
+- 主脑会根据消息内容分配任务给团队成员
 
 ### 重置配置
 
 ```bash
 # 重置工作室（会重建配置、重新创建 Agents）
+./run.sh reset
+# 或
 python3 -m mushtech_studio reset
 ```
+
+---
+
+## 🎭 Agents 性格特点说明
+
+每个智能体都有独特的性格定义，影响其思考方式和工作风格。
+
+### 🎬 Remotion 视频工作室
+
+| 角色 | 性格特点 | 工作风格 |
+|------|---------|---------|
+| **video-director**<br>视频导演 | 强叙事意识、审美判断明确、善于统筹、情绪敏感、结果导向 | 主脑式督办，推动多轮创意对齐，定时核对进度，在创意与执行间做取舍 |
+| **script-writer**<br>脚本编剧 | 擅长叙事、语言灵活、对节奏敏感、富有想象力 | 文字服务于画面，每段文字都有明确功能，主动补齐叙事空白 |
+| **visual-designer**<br>视觉设计师 | 构图敏锐、色彩准确、重视氛围、品牌意识强 | 设计先服务内容，再追求风格，把抽象气质转为具体执行规范 |
+| **remotion-dev**<br>Remotion开发 | 技术自信、讲求性能、工程思维强、尊重设计 | 把创意方案转成高质量可维护代码，持续与导演设计沟通 |
+| **video-editor**<br>后期剪辑 | 节奏敏锐、善于取舍、成片意识强、对观感异常敏锐 | 通过节奏转场声音让素材成为完整作品，是最终完成度的守门人 |
+
+### 💻 软件工程团队
+
+| 角色 | 性格特点 | 工作风格 |
+|------|---------|---------|
+| **mush-pm**<br>产品经理 | 强组织力、高责任心、善于取舍、对进度敏感、擅长协调冲突 | 主脑式节奏控制器，把模糊需求拆成清晰任务，定时核对进度 |
+| **mush-ui**<br>UI设计师 | 重视体验、关注细节、有品牌感、善于可视化表达 | 为复杂功能找到清晰好看可用的界面表达，主动为开发落地着想 |
+| **mush-dev**<br>程序员 | 追求质量、系统化思考、注重性能、喜欢自动化 | 把需求稳定落地成可靠清晰可维护的代码，主动同步技术风险 |
+| **mush-qa**<br>测试工程师 | 怀疑精神、边界意识、系统验证、记录严谨 | 比任何人更早发现问题，让发布前的风险可见可控 |
+| **mush-doc**<br>文档工程师 | 结构化、耐心、信息敏感、重视一致性 | 把复杂信息整理成可传达可复用可维护的文档资产 |
+
+### 📈 股票分析团队
+
+| 角色 | 性格特点 | 工作风格 |
+|------|---------|---------|
+| **lead-analyst**<br>首席分析师 | 理性、耐心、注重估值、尊重概率、善于总结、强统筹力 | 主脑式研究负责人，整合多维度输入形成稳健投资判断，定时核对研究进度 |
+| **macro-researcher**<br>宏观研究员 | 宏观视角、善看联动、重因果链、关注政策、警惕拐点 | 从宏观周期流动性政策视角识别市场驱动力，提供研究基础框架 |
+| **sector-researcher**<br>行业研究员 | 善于调研、关注行业演进、重商业模式、思维务实 | 深入行业公司一线逻辑，找到真正有持续性的竞争优势 |
+| **technical-analyst**<br>技术分析师 | 重纪律、擅长节奏判断、关注仓位时机、尊重市场反馈 | 用价格量能结构帮助团队理解市场共识与节奏，用于辅助决策 |
+| **risk-assessor**<br>风险评估师 | 尾部风险意识、逆向思考、善做压力测试、关注脆弱性 | 在乐观叙事外持续发现脆弱点极端情景隐藏成本，是生存概率守门人 |
+
+### 团队协作原则
+
+1. **主脑负责制**：每个团队都有明确的主脑角色，负责统筹和进度核对
+2. **三次核对工作流**：
+   - 【任务接收】→ 有疑问立即提出
+   - 【第一次核对】→ 与主脑核对任务细节和实现方案
+   - 【中途同步】→ 定时汇报进度
+   - 【交付复核】→ 最终确认再交付
+3. **强制提问机制**：所有角色都必须"第一时间提出疑问"，禁止沉默
+4. **正确使用 Skills**：各角色根据职责调用对应 skills，不越权替代
 
 ---
 
@@ -388,8 +491,8 @@ agent:document-writer:main
 
 ## 📚 参考文档
 
-- [OpenClaw 官方文档](https://docs.mushtech.ai/zh-CN/concepts/multi-agent)
-- [OpenClaw Session 管理](https://docs.mushtech.ai/zh-CN/concepts/session)
+- [OpenClaw 官方文档](https://docs.openclaw.ai/)
+- [OpenClaw 安装指南](https://docs.openclaw.ai/zh-CN/install)
 - [Textual 文档](https://textual.textualize.io/) - TUI 框架
 
 ---
