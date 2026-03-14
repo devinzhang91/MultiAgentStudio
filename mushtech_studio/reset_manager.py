@@ -17,6 +17,8 @@ from typing import Tuple, List, Dict, Any, Optional
 from urllib import error as urllib_error
 from urllib import request as urllib_request
 
+from .agent_initializer import AgentInitializer
+from .cmd_executor import get_cmd_executor
 from .config_manager import get_config_manager
 from .templates import get_template
 from .logger import logger
@@ -26,11 +28,16 @@ class ResetManager:
     """重置管理器"""
     
     OPENCLAW_CONFIG_PATH = Path.home() / ".openclaw" / "openclaw.json"
-    OPENCLAW_BACKUP_DIR = Path.home() / ".openclaw" / "backups"
     
     def __init__(self):
         self.config_manager = get_config_manager()
         self.studio_config = self.config_manager.get_config()
+        self.cmd = get_cmd_executor()
+        self.initializer = AgentInitializer()
+
+    def _get_backup_dir(self) -> Path:
+        """统一返回工作室备份目录。"""
+        return Path(self.studio_config.base_workspace).expanduser() / "backups"
     
     def reset(self, force: bool = False) -> Tuple[bool, str]:
         """
@@ -52,6 +59,10 @@ class ResetManager:
             # 2. 备份当前配置
             backup_path = self._backup_openclaw_config()
             logger.info(f"[ResetManager] 配置已备份到: {backup_path}")
+
+            # 2.5 归档旧 workspace 并删除旧 agents
+            self._archive_previous_workspace()
+            self._delete_existing_agents()
             
             # 3. 获取模板
             template = get_template(self.studio_config.studio_type)
@@ -68,6 +79,12 @@ class ResetManager:
             if not success:
                 return False, "初始化Workspace和Agent目录失败"
             logger.info("[ResetManager] Workspace和Agent目录已准备完成")
+
+            # 4.2 使用 openclaw CLI 创建默认 agents
+            success, failures = self._create_agents_from_template(template)
+            if not success:
+                return False, f"创建默认Agent失败: {'; '.join(failures)}"
+            logger.info("[ResetManager] 默认 agents 已通过 openclaw 创建")
             
             # 5. 重置employees.json
             success = self._reset_employees_json(template)
@@ -91,15 +108,15 @@ class ResetManager:
                 return False, f"重启Gateway失败: {message}"
             logger.info("[ResetManager] Gateway已重启")
 
-            # 9. 向每位员工发送 /new，重建独立会话
-            refreshed_count, failures = self._refresh_agent_sessions(template)
+            # 9. 引导每位员工写入默认 Markdown，并在结束后发送 /new
+            refreshed_count, failures = self._bootstrap_template_agents(template)
             logger.info(
-                f"[ResetManager] 已向 {refreshed_count} 个会话发送 /new，失败 {len(failures)} 个"
+                f"[ResetManager] 已完成 {refreshed_count} 个员工初始化引导，失败 {len(failures)} 个"
             )
 
             summary = (
                 f"重置完成！OpenClaw Gateway已重启，"
-                f"并已向 {refreshed_count}/{len(template.get_agents())} 个员工会话发送 /new。"
+                f"并已完成 {refreshed_count}/{len(template.get_agents())} 个员工的默认文件初始化与会话重建。"
             )
             if failures:
                 summary += f" 失败会话: {'; '.join(failures)}"
@@ -150,12 +167,13 @@ class ResetManager:
             Path: 备份文件路径
         """
         # 创建备份目录
-        self.OPENCLAW_BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+        backup_dir = self._get_backup_dir()
+        backup_dir.mkdir(parents=True, exist_ok=True)
         
         # 生成备份文件名
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         backup_filename = f"openclaw.json.bak.{timestamp}"
-        backup_path = self.OPENCLAW_BACKUP_DIR / backup_filename
+        backup_path = backup_dir / backup_filename
         
         # 复制文件
         shutil.copy2(self.OPENCLAW_CONFIG_PATH, backup_path)
@@ -245,14 +263,12 @@ class ResetManager:
                 config["meta"] = {}
             config["meta"]["lastTouchedAt"] = datetime.utcnow().isoformat(timespec="seconds") + "Z"
             
-            # 获取新的agents配置
+            # 获取当前模板的 agent ids，用于更新全局权限与 hooks
             base_workspace = self.studio_config.base_workspace
-            architecture = self.studio_config.architecture
-            new_agents_list = template.get_openclaw_agents_config(base_workspace, architecture)
             agent_ids = [a.id for a in template.get_agents()]
-            
-            # 更新agents.list（移除不被识别的key）
-            config["agents"]["list"] = self._clean_agents_config(new_agents_list)
+
+            # agents.list 交由 openclaw agents add 逐个创建
+            config["agents"]["list"] = []
 
             defaults = config["agents"].setdefault("defaults", {})
             defaults["workspace"] = f"{base_workspace}/workspace"
@@ -319,7 +335,115 @@ class ResetManager:
         except Exception as e:
             logger.error(f"[ResetManager] 初始化运行目录失败: {e}")
             return False
+
+    def _archive_previous_workspace(self) -> bool:
+        try:
+            base_workspace = Path(self.studio_config.base_workspace).expanduser()
+            workspace_root = base_workspace / "workspace"
+            if not workspace_root.exists():
+                return True
+
+            backup_dir = self._get_backup_dir()
+            backup_dir.mkdir(parents=True, exist_ok=True)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            archive_name = backup_dir / f"workspace_backup_{timestamp}"
+
+            shutil.make_archive(str(archive_name), "zip", root_dir=str(workspace_root))
+            logger.info(f"[ResetManager] 归档旧 workspace 到: {archive_name}.zip")
+
+            shutil.rmtree(workspace_root, ignore_errors=True)
+            logger.info(f"[ResetManager] 清理旧 workspace 目录: {workspace_root}")
+
+            return True
+        except Exception as e:
+            logger.warning(f"[ResetManager] 归档 workspace 失败: {e}")
+            return False
+
+    def _gather_existing_agent_ids(self) -> List[str]:
+        data_dir = Path(__file__).parent.parent / "data"
+        employees_file = data_dir / "employees.json"
+        agent_ids: List[str] = []
+
+        if not employees_file.exists():
+            return agent_ids
+
+        try:
+            payload = json.loads(employees_file.read_text(encoding="utf-8"))
+        except Exception:
+            return agent_ids
+
+        for key, value in payload.items():
+            if not isinstance(value, dict):
+                continue
+            agent_id = value.get("agent_id")
+            if agent_id and agent_id not in agent_ids:
+                agent_ids.append(agent_id)
+
+        return agent_ids
+
+    def _delete_existing_agents(self) -> bool:
+        agent_ids = self._gather_existing_agent_ids()
+        if not agent_ids:
+            return True
+
+        failures: List[str] = []
+        for agent_id in agent_ids:
+            success, _ = self.cmd.agents_delete(agent_id, force=True)
+            if not success:
+                failures.append(agent_id)
+
+        if failures:
+            logger.warning(f"[ResetManager] 删除 agents 失败: {failures}")
+        else:
+            logger.info(f"[ResetManager] 删除旧 agents: {agent_ids}")
+
+        return not failures
+
+    def _create_agents_from_template(self, template) -> Tuple[bool, List[str]]:
+        failures: List[str] = []
+        workspace_map = template.get_workspace_map(
+            self.studio_config.base_workspace,
+            self.studio_config.architecture,
+        )
+
+        for agent in template.get_agents():
+            workspace = workspace_map.get(agent.id, f"{self.studio_config.base_workspace}/workspace/{agent.id}")
+            agent_dir = f"~/.openclaw/agents/{agent.id}/agent"
+
+            success, payload = self.cmd.agents_add(
+                name=agent.id,
+                workspace=workspace,
+                agent_dir=agent_dir,
+                model=agent.model,
+                non_interactive=True,
+            )
+            if not success:
+                failures.append(f"{agent.id}({payload.get('error', 'add failed')})")
+                continue
+
+            identity_ok, identity_reason = self.cmd.agents_set_identity(
+                agent.id,
+                name=agent.display_name or agent.name,
+                emoji=agent.emoji,
+            )
+            if not identity_ok:
+                failures.append(f"{agent.id}(identity: {identity_reason})")
+            elif agent.is_main_brain:
+                bind_channel, bind_account = self._get_main_brain_binding()
+                bind_ok, bind_reason = self.cmd.agents_bind(agent.id, bind_channel, bind_account)
+                if not bind_ok:
+                    failures.append(f"{agent.id}(bind: {bind_reason})")
+
+        return not failures, failures
     
+    def _get_main_brain_binding(self) -> Tuple[str, Optional[str]]:
+        """返回重启时主脑的 channel binding 配置"""
+        channel = (self.studio_config.main_brain_bind_channel or "").strip()
+        if not channel:
+            channel = "feishu"
+        account = (self.studio_config.main_brain_bind_account_id or "").strip()
+        return channel, account or None
+
     def _reset_employees_json(self, template) -> bool:
         """
         重置employees.json
@@ -508,21 +632,22 @@ class ResetManager:
 
         return False, last_error
 
-    def _refresh_agent_sessions(self, template) -> Tuple[int, List[str]]:
-        """重启后向所有Agent会话发送 /new，确保上下文重置"""
+    def _bootstrap_template_agents(self, template) -> Tuple[int, List[str]]:
+        """重启后引导所有 Agent 写入默认 Markdown，并在最后发送 /new。"""
         try:
-            endpoint, token = self._get_hook_endpoint()
             refreshed_count = 0
             failures: List[str] = []
+            workspace_map = template.get_workspace_map(
+                self.studio_config.base_workspace,
+                self.studio_config.architecture,
+            )
 
             for agent in template.get_agents():
-                payload = {
-                    "name": "MushTech Studio Reset",
-                    "agentId": agent.id,
-                    "sessionKey": f"agent:{agent.id}:main",
-                    "message": "/new",
-                }
-                success, reason = self._post_agent_hook_message(endpoint, token, payload)
+                success, reason = self.initializer.initialize_agent(
+                    agent,
+                    workspace=workspace_map.get(agent.id, f"{self.studio_config.base_workspace}/workspace/{agent.id}"),
+                    reset_after_bootstrap=True,
+                )
                 if success:
                     refreshed_count += 1
                 else:
@@ -530,7 +655,7 @@ class ResetManager:
 
             return refreshed_count, failures
         except Exception as e:
-            logger.error(f"[ResetManager] 发送 /new 失败: {e}")
+            logger.error(f"[ResetManager] 初始化默认 Markdown 失败: {e}")
             return 0, [str(e)]
     
     def _restart_gateway(self) -> Tuple[bool, str]:

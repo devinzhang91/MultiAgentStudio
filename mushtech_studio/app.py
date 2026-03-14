@@ -3,7 +3,6 @@
 🦞 MushTech TUI Studio - 纯键盘极客风格
 """
 
-import unicodedata
 from textual.app import App, ComposeResult
 from textual.screen import ModalScreen
 from textual.widgets import Header, Footer, Static, Input, Button
@@ -17,6 +16,7 @@ from .chat_screen import ChatScreen
 from .agent_management_screen import AgentManagementScreen
 from .message_manager import get_message_manager, MessageManager
 from .logger import logger
+from .utils import pad_to_width
 
 
 class MushTechStudioApp(App):
@@ -184,45 +184,13 @@ class MushTechStudioApp(App):
         
         yield Footer()
     
-    @staticmethod
-    def _display_width(s: str) -> int:
-        """计算字符串的显示宽度（处理中文和emoji）"""
-        width = 0
-        for char in s:
-            if unicodedata.east_asian_width(char) in ('F', 'W'):
-                width += 2
-            elif unicodedata.category(char) == 'So':
-                width += 2
-            else:
-                width += 1
-        return width
-    
-    @classmethod
-    def _pad_to_width(cls, s: str, width: int) -> str:
-        """将字符串填充到指定显示宽度"""
-        current_width = cls._display_width(s)
-        padding = width - current_width
-        if padding > 0:
-            return s + ' ' * padding
-        elif padding < 0:
-            result = ''
-            w = 0
-            for char in s:
-                char_width = cls._display_width(char)
-                if w + char_width > width - 1:
-                    return result + '…'
-                result += char
-                w += char_width
-            return result + ' ' * (width - w)
-        return s
-    
     def _format_row(self, emoji: str, name: str, role: str, status: str, message: str, is_header: bool = False) -> str:
         """格式化行内容，确保所有列对齐"""
-        emoji_col = self._pad_to_width(emoji, self.COL_EMOJI)
-        name_col = self._pad_to_width(name, self.COL_NAME)
-        role_col = self._pad_to_width(role, self.COL_ROLE)
-        status_col = self._pad_to_width(status, self.COL_STATUS)
-        message_col = self._pad_to_width(message, self.COL_MESSAGE)
+        emoji_col = pad_to_width(emoji, self.COL_EMOJI)
+        name_col = pad_to_width(name, self.COL_NAME)
+        role_col = pad_to_width(role, self.COL_ROLE)
+        status_col = pad_to_width(status, self.COL_STATUS)
+        message_col = pad_to_width(message, self.COL_MESSAGE)
         return f"{emoji_col}{name_col} {role_col} {status_col} {message_col}"
 
     def _latest_message_preview(self, emp_id: str) -> str:
@@ -255,7 +223,7 @@ class MushTechStudioApp(App):
         }
         text = status_map.get(status, "⚫ 离线 ")
         # 统一填充到显示宽度 10
-        return self._pad_to_width(text, self.COL_STATUS)
+        return pad_to_width(text, self.COL_STATUS)
     
     def _create_employee_row(self, emp: Employee) -> Static:
         """创建员工行"""

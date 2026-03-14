@@ -10,7 +10,10 @@ MushTech Studio 配置界面
 
 from __future__ import annotations
 
+import json
+
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
 
 from textual.app import App, ComposeResult
@@ -274,6 +277,8 @@ class ConfirmSaveDialog(ModalScreen):
 class ConfigScreen(Screen):
     """配置主界面"""
 
+    OPENCLAW_CONFIG_PATH = Path.home() / ".openclaw" / "openclaw.json"
+
     CSS = """
     .screen {
         width: 100%;
@@ -435,6 +440,20 @@ class ConfigScreen(Screen):
                 description="选择 MushTech Studio 预置模板。模板决定默认角色分工、成员配置和默认团队结构。",
             ),
             ConfigItem(
+                key="bind_channel",
+                label="主脑绑定频道",
+                kind="text",
+                section="绑定",
+                description="从 Gateway 配置读取可用的 channel，选择后重启时会执行 openclaw agents bind。",
+            ),
+            ConfigItem(
+                key="bind_account",
+                label="主脑绑定账号 ID",
+                kind="text",
+                section="绑定",
+                description="可选字段，填写要绑定的具体账号／agentId。留空则使用频道的默认账号。",
+            ),
+            ConfigItem(
                 key="save",
                 label="保存配置",
                 kind="action",
@@ -529,6 +548,11 @@ class ConfigScreen(Screen):
             return self.config.get_architecture_display_name()
         if item.key == "studio_type":
             return self.config.get_studio_type_display_name()
+        if item.key == "bind_channel":
+            channel = (self.config.main_brain_bind_channel or "").strip()
+            return channel or "feishu (默认)"
+        if item.key == "bind_account":
+            return self.config.main_brain_bind_account_id or "(未设置)"
         if item.key == "save":
             return "写入 studio_config.json"
         if item.key == "quit":
@@ -548,6 +572,8 @@ class ConfigScreen(Screen):
             "workspace": "base_workspace",
             "architecture": "architecture",
             "studio_type": "studio_type",
+            "bind_channel": "main_brain_bind_channel",
+            "bind_account": "main_brain_bind_account_id",
         }
         field_name = field_map.get(item_key)
         if not field_name:
@@ -594,6 +620,38 @@ class ConfigScreen(Screen):
             for agent in template.get_agents():
                 role_flag = "[主脑] " if agent.is_main_brain else ""
                 lines.append(f"- {agent.emoji} {agent.display_name}: {role_flag}{agent.role}")
+        elif item.key in {"bind_channel", "bind_account"}:
+            template = get_template(self.config.studio_type)
+            primary_agent = template.get_primary_agent()
+            channel_defs = self._load_channel_definitions()
+            channel = (self.config.main_brain_bind_channel or "").strip() or "feishu"
+            account = self.config.main_brain_bind_account_id
+
+            lines.append(f"目标主脑: {primary_agent.display_name} ({primary_agent.id})")
+            lines.append("")
+            lines.append("重启时会自动执行绑定命令:")
+            bind_cmd = f"openclaw agents bind --agent {primary_agent.id} --bind {channel}"
+            if account:
+                bind_cmd = f"{bind_cmd}:{account}"
+            lines.append(bind_cmd)
+            lines.append("")
+
+            if item.key == "bind_channel":
+                lines.append("可用 channels (来源: ~/.openclaw/openclaw.json):")
+                if channel_defs:
+                    for ch, accounts in sorted(channel_defs.items()):
+                        suffix = f" ({len(accounts)} account{'s' if len(accounts) != 1 else ''})" if accounts else ""
+                        lines.append(f"- {ch}{suffix}")
+                else:
+                    lines.append("- 未能读取 channels 信息")
+            else:
+                lines.append(f"{channel} 下可选 accountId:")
+                channel_accounts = channel_defs.get(channel, [])
+                if channel_accounts:
+                    for acct in channel_accounts:
+                        lines.append(f"- {acct}")
+                else:
+                    lines.append("- 无静态 accountId，留空会使用 channel 默认账号")
         elif item.key == "save":
             lines.append("待保存摘要:")
             lines.extend(self._summary_lines())
@@ -614,7 +672,42 @@ class ConfigScreen(Screen):
             f"- Workspace: {self.config.base_workspace}",
             f"- 架构: {self.config.get_architecture_display_name()}",
             f"- 模板: {self.config.get_studio_type_display_name()}",
+            f"- 主脑绑定频道: {(self.config.main_brain_bind_channel or '').strip() or 'feishu (默认)'}",
+            f"- 主脑绑定账号: {self.config.main_brain_bind_account_id or '(未设置)'}",
         ]
+
+    def _load_channel_definitions(self) -> dict[str, list[str]]:
+        try:
+            raw = self.OPENCLAW_CONFIG_PATH.read_text(encoding="utf-8")
+            data = json.loads(raw)
+        except Exception:
+            return {}
+
+        definitions: dict[str, list[str]] = {}
+        channels = data.get("channels")
+        if isinstance(channels, dict):
+            for name, info in channels.items():
+                if not isinstance(info, dict):
+                    continue
+                accounts_raw = info.get("accounts")
+                accounts: list[str] = []
+                if isinstance(accounts_raw, dict):
+                    for key, account in accounts_raw.items():
+                        account_id = None
+                        if isinstance(account, dict):
+                            account_id = account.get("accountId") or key
+                        else:
+                            account_id = key
+                        if account_id:
+                            account_id = str(account_id).strip()
+                            if account_id and account_id not in accounts:
+                                accounts.append(account_id)
+                definitions[name] = accounts
+
+        if "feishu" not in definitions:
+            definitions["feishu"] = []
+
+        return definitions
 
     def _show_message(self, message: str, is_error: bool = False) -> None:
         widget = self.query_one("#message", Static)
@@ -631,6 +724,13 @@ class ConfigScreen(Screen):
 
     def action_select(self) -> None:
         item = self.items[self.focused_index]
+
+        if item.key == "bind_channel":
+            self._select_bind_channel(item)
+            return
+        if item.key == "bind_account":
+            self._select_bind_account(item)
+            return
 
         if item.kind == "text":
             self._open_text_dialog(item)
@@ -653,6 +753,8 @@ class ConfigScreen(Screen):
             "host": self.config.gateway_host,
             "port": str(self.config.gateway_port),
             "workspace": self.config.base_workspace,
+            "bind_channel": self.config.main_brain_bind_channel,
+            "bind_account": self.config.main_brain_bind_account_id,
         }
 
         def on_result(result: Optional[str]) -> None:
@@ -682,6 +784,10 @@ class ConfigScreen(Screen):
                     self._show_message("Workspace 路径不能为空", True)
                     return
                 self.config.base_workspace = new_value
+            elif item.key == "bind_channel":
+                self.config.main_brain_bind_channel = new_value
+            elif item.key == "bind_account":
+                self.config.main_brain_bind_account_id = new_value
 
             self._refresh_all()
             self._show_message(f"已更新 {item.label}")
@@ -711,6 +817,68 @@ class ConfigScreen(Screen):
             self._refresh_all()
 
         self.app.push_screen(ChoiceDialog(item.label, item.description, options, current_value), on_result)
+
+    def _select_bind_channel(self, item: ConfigItem) -> None:
+        channel_defs = self._load_channel_definitions()
+        if not channel_defs:
+            self._show_message("未读取到 ~/.openclaw/openclaw.json 中的 channel 配置，转为文本输入。", True)
+            self._open_text_dialog(item)
+            return
+
+        options = []
+        for channel_name in sorted(channel_defs.keys()):
+            accounts = channel_defs[channel_name]
+            label = f"{channel_name} ({len(accounts)} account{'s' if len(accounts) != 1 else ''})" if accounts else channel_name
+            description = "" if accounts else "未配置独立 account"
+            options.append({"value": channel_name, "label": label, "description": description})
+
+        current_value = (self.config.main_brain_bind_channel or "").strip() or "feishu"
+
+        def on_result(result: Optional[str]) -> None:
+            if result is None:
+                return
+            self.config.main_brain_bind_channel = result
+            self.config.main_brain_bind_account_id = ""
+            self._refresh_all()
+            self._show_message(f"已设置主脑绑定频道为 {result}")
+
+        self.app.push_screen(
+            ChoiceDialog("主脑绑定频道", "选择一个已配置的 channel 名称。", options, current_value),
+            on_result,
+        )
+
+    def _select_bind_account(self, item: ConfigItem) -> None:
+        channel_defs = self._load_channel_definitions()
+        if not channel_defs:
+            self._show_message("未读取到 channel 配置，转为文本输入。", True)
+            self._open_text_dialog(item)
+            return
+
+        channel = (self.config.main_brain_bind_channel or "").strip() or "feishu"
+        accounts = channel_defs.get(channel, [])
+        options = [{"value": "", "label": "使用频道默认账号（不填写 accountId）", "description": ""}]
+        for account_id in accounts:
+            options.append({"value": account_id, "label": account_id, "description": ""})
+
+        current_value = self.config.main_brain_bind_account_id or ""
+
+        def on_result(result: Optional[str]) -> None:
+            if result is None:
+                return
+            self.config.main_brain_bind_account_id = result
+            self._refresh_all()
+            label = result or "频道默认账号"
+            self._show_message(f"已设置主脑绑定账号为 {label}")
+
+        self.app.push_screen(
+            ChoiceDialog(
+                "主脑绑定账号",
+                f"选择 {channel} 对应的 accountId，或留空使用 channel 默认账号。",
+                options,
+                current_value,
+            ),
+            on_result,
+        )
 
     def _validate_config(self) -> list[str]:
         errors = []
@@ -748,6 +916,8 @@ class ConfigScreen(Screen):
                 base_workspace=self.config.base_workspace,
                 architecture=self.config.architecture,
                 studio_type=self.config.studio_type,
+                main_brain_bind_channel=self.config.main_brain_bind_channel,
+                main_brain_bind_account_id=self.config.main_brain_bind_account_id,
             )
             if not success:
                 self._show_message("保存配置失败", True)

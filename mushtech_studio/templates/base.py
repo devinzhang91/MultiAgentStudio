@@ -3,9 +3,11 @@
 定义工作室模板的接口和规范
 """
 
+import json
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import List, Dict, Any
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass
@@ -25,6 +27,7 @@ class AgentConfig:
     allowed_tools: List[str]
     denied_tools: List[str]
     model: str = "volcengine/glm-4.7"
+    bootstrap_docs: Dict[str, Any] = field(default_factory=dict)
     
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典"""
@@ -260,3 +263,39 @@ def list_templates() -> List[Dict[str, str]]:
     ]
     
     return templates
+
+
+def load_template_agents(template_id: str) -> List[AgentConfig]:
+    """从 prompts JSON 加载模板 agents 与初始化文档配置"""
+    prompts_dir = Path(__file__).parent / "prompts"
+    agents_path = prompts_dir / f"{template_id}.json"
+    docs_path = prompts_dir / f"{template_id}_docs.json"
+
+    agents_data = json.loads(agents_path.read_text(encoding="utf-8"))
+    docs_data: Dict[str, Any] = {}
+    if docs_path.exists():
+        docs_data = json.loads(docs_path.read_text(encoding="utf-8"))
+
+    agents: List[AgentConfig] = []
+    for entry in agents_data:
+        agents.append(
+            AgentConfig(
+                id=entry.get("id"),
+                employee_id=entry.get("employee_id"),
+                name=entry.get("name"),
+                display_name=entry.get("display_name"),
+                role=entry.get("role"),
+                agent_type=entry.get("agent_type"),
+                is_main_brain=bool(entry.get("is_main_brain")),
+                emoji=entry.get("emoji") or "",
+                avatar=entry.get("avatar") or "",
+                personality=entry.get("personality") or "",
+                specialty=entry.get("specialty") or "",
+                allowed_tools=entry.get("allowed_tools") or [],
+                denied_tools=entry.get("denied_tools") or [],
+                model=entry.get("model") or "volcengine/glm-4.7",
+                bootstrap_docs=docs_data.get(entry.get("id"), {}),
+            )
+        )
+
+    return agents

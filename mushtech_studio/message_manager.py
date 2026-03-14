@@ -141,14 +141,6 @@ class OpenClawSessionReader:
             logger.error(f"Failed to resolve session file for {self.agent_id}: {e}")
 
         return None
-        
-        try:
-            data = json.loads(self.sessions_file.read_text(encoding='utf-8'))
-            full_key = f"agent:{self.agent_id}:{session_key}"
-            return data.get(full_key, {}).get("sessionId")
-        except Exception as e:
-            logger.error(f"Failed to read sessions.json for {self.agent_id}: {e}")
-            return None
     
     def read_messages(self, session_key: str = "main", limit: int = 200) -> List[Message]:
         """从 OpenClaw 读取消息历史（只读，不修改）"""

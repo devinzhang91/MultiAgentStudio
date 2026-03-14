@@ -1,8 +1,0 @@
-{
-  "gateway_token": "291649c89d96626d466cef7dfe1edf0031312f5897ce2402",
-  "gateway_host": "127.0.0.1",
-  "gateway_port": 18789,
-  "base_workspace": "/Users/zhangyoujin/MushTech-openclaw",
-  "architecture": "centralized",
-  "studio_type": "remotion_video"
-}

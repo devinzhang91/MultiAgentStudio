@@ -87,6 +87,9 @@ class StudioConfig:
     
     # 工作室类型: software_engineering | remotion_video | stock_analysis
     studio_type: str = "software_engineering"
+    # 主脑绑定配置
+    main_brain_bind_channel: str = ""
+    main_brain_bind_account_id: str = ""
     
     def __post_init__(self):
         """初始化后处理"""

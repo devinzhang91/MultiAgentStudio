@@ -41,8 +41,8 @@
       "role": "脚本编剧",
       "agent_type": "specialist",
       "is_main_brain": false,
-      "emoji": "🖊️",
-      "avatar": "🖊️",
+      "emoji": "✍️",
+      "avatar": "✍️",
       "personality": "才华横溢的编剧，擅长撰写引人入胜的故事和对话。深谙叙事艺术，能够根据目标受众创作恰当的内容风格，从轻松幽默到严肃专业都能驾驭自如。",
       "specialty": "视频脚本撰写、旁白文案、故事结构、对话设计、内容策略",
       "allowed_tools": [

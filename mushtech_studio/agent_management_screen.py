@@ -7,9 +7,11 @@ from textual.screen import Screen, ModalScreen
 from textual.widgets import Static, Input, Button
 from textual.containers import Vertical, Horizontal
 
+from .agent_initializer import AgentInitializer
 from .models import EmployeeStore, Employee, create_employee_from_agent_config
 from .cmd_executor import get_cmd_executor
 from .logger import logger
+from .utils import pad_to_width
 
 
 class AgentManagementScreen(Screen):
@@ -86,6 +88,7 @@ class AgentManagementScreen(Screen):
         super().__init__()
         self.store = store
         self.cmd = get_cmd_executor()
+        self.initializer = AgentInitializer()
         self.employees = []
         self.selected = 0
     
@@ -98,27 +101,6 @@ class AgentManagementScreen(Screen):
     def on_mount(self):
         self._load_data()
     
-    @staticmethod
-    def _display_width(s: str) -> int:
-        """计算显示宽度"""
-        import unicodedata
-        width = 0
-        for char in s:
-            if unicodedata.east_asian_width(char) in ('F', 'W'):
-                width += 2
-            elif unicodedata.category(char) == 'So':
-                width += 2
-            else:
-                width += 1
-        return width
-    
-    @classmethod
-    def _pad_to_width(cls, s: str, width: int) -> str:
-        """填充到指定宽度"""
-        current = cls._display_width(s)
-        pad = width - current
-        return s + ' ' * max(0, pad)
-    
     def _load_data(self):
         self.store.load()
         self.employees = sorted(self.store.employees.values(), key=lambda e: e.id)
@@ -128,11 +110,11 @@ class AgentManagementScreen(Screen):
         
         # 表头 - 使用对齐函数
         header_parts = [
-            self._pad_to_width("员工ID", 12),
-            self._pad_to_width("Agent ID", 14),
-            self._pad_to_width("显示名", 12),
-            self._pad_to_width("角色", 22),
-            self._pad_to_width("类型", 6),
+            pad_to_width("员工ID", 12),
+            pad_to_width("Agent ID", 14),
+            pad_to_width("显示名", 12),
+            pad_to_width("角色", 22),
+            pad_to_width("类型", 6),
         ]
         header_line = " " + "  ".join(header_parts)
         list_container.mount(Static(header_line, classes="header-row"))
@@ -143,11 +125,11 @@ class AgentManagementScreen(Screen):
             typ = "主脑" if emp.is_main_brain else "专才"
             
             row_parts = [
-                self._pad_to_width(emp.id[:12], 12),
-                self._pad_to_width(emp.agent_id[:14], 14),
-                self._pad_to_width(name[:12], 12),
-                self._pad_to_width(emp.role[:22], 22),
-                self._pad_to_width(typ, 6),
+                pad_to_width(emp.id[:12], 12),
+                pad_to_width(emp.agent_id[:14], 14),
+                pad_to_width(name[:12], 12),
+                pad_to_width(emp.role[:22], 22),
+                pad_to_width(typ, 6),
             ]
             line = " " + "  ".join(row_parts)
             item = Static(line, classes="item selected" if i == 0 else "item")
@@ -262,8 +244,12 @@ class AgentManagementScreen(Screen):
             if success:
                 self.cmd.agents_set_identity(emp.agent_id, name=emp.display_name or emp.name, emoji=emp.emoji)
                 self.store.add(emp)
+                bootstrap_ok, bootstrap_reason = self.initializer.initialize_employee(emp, reset_after_bootstrap=True)
                 self._load_data()
-                self.notify("✅ 已创建")
+                if bootstrap_ok:
+                    self.notify("✅ 已创建并初始化")
+                else:
+                    self.notify(f"⚠️ 已创建，但初始化失败: {bootstrap_reason}", severity="warning")
             else:
                 self.notify("❌ 创建失败", severity="error")
         except Exception as e:
@@ -386,27 +372,6 @@ class EditAgentScreen(Screen):
         self.focused_index = 0
         self.field_rows = []
     
-    @staticmethod
-    def _display_width(s: str) -> int:
-        """计算显示宽度"""
-        import unicodedata
-        width = 0
-        for char in s:
-            if unicodedata.east_asian_width(char) in ('F', 'W'):
-                width += 2
-            elif unicodedata.category(char) == 'So':
-                width += 2
-            else:
-                width += 1
-        return width
-    
-    @classmethod
-    def _pad_to_width(cls, s: str, width: int) -> str:
-        """填充到指定宽度"""
-        current = cls._display_width(s)
-        pad = width - current
-        return s + ' ' * max(0, pad)
-    
     def compose(self):
         yield Static(f" ✏️ 编辑: {self.emp.name} ", id="edit-title")
         yield Static(" ↑↓选择 Enter编辑 S保存 ESC取消 ", id="edit-help")
@@ -422,8 +387,8 @@ class EditAgentScreen(Screen):
                 
                 # 格式化显示: 标签(固定12宽) + 值(根据字段不同)
                 display_value = value if value else "(空)"
-                label_str = self._pad_to_width(label, 12)
-                value_str = self._pad_to_width(display_value, value_width)
+                label_str = pad_to_width(label, 12)
+                value_str = pad_to_width(display_value, value_width)
                 line = f" {label_str}  {value_str}"
                 
                 row = Static(line, classes=row_classes)
@@ -487,8 +452,8 @@ class EditAgentScreen(Screen):
         for i, (field, label, editable, value_width) in enumerate(self.FIELDS):
             value = self.values[field]
             display_value = value if value else "(空)"
-            label_str = self._pad_to_width(label, 12)
-            value_str = self._pad_to_width(display_value, value_width)
+            label_str = pad_to_width(label, 12)
+            value_str = pad_to_width(display_value, value_width)
             line = f" {label_str}  {value_str}"
             self.field_rows[i].update(line)
     

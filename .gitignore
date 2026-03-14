@@ -23,4 +23,6 @@ Thumbs.db
 
 # Project data（身份文件包含敏感信息，不提交）
 data/identities/
+data/studio_config.json
+data/messages_*.jsonl
 *.log

@@ -94,7 +94,6 @@ openclaw-tui-studio/
 │   ├── client.py               # WebSocket 客户端（多智能体会话隔离）
 │   ├── chat_screen.py          # 聊天界面（即时消息显示）
 │   ├── agent_management_screen.py  # 智能体管理界面（增删改查）
-│   ├── add_employee_screen.py  # 添加员工对话框
 │   ├── config_screen.py        # 配置界面
 │   ├── config_manager.py       # 配置管理器
 │   ├── message_manager.py      # 全局消息管理器

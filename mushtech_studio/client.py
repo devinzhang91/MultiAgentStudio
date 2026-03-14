@@ -27,9 +27,6 @@ def _now_ms() -> int:
     return int(time.time() * 1000)
 
 
-def _ts() -> str:
-    return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-
 
 def _b64url(raw: bytes) -> str:
     return base64.urlsafe_b64encode(raw).decode().rstrip("=")

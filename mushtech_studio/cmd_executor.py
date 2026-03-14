@@ -152,14 +152,23 @@ class MushTechCmdExecutor:
         agent_id: str,
         name: Optional[str] = None,
         emoji: Optional[str] = None,
+        workspace: Optional[str] = None,
+        from_identity: bool = False,
+        identity_file: Optional[str] = None,
     ) -> Tuple[bool, str]:
         """设置智能体身份信息"""
-        args = ["agents", "set-identity", agent_id]
+        args = ["agents", "set-identity", "--agent", agent_id]
         
         if name:
             args.extend(["--name", name])
         if emoji:
             args.extend(["--emoji", emoji])
+        if workspace:
+            args.extend(["--workspace", workspace])
+        if identity_file:
+            args.extend(["--identity-file", identity_file])
+        if from_identity:
+            args.append("--from-identity")
             
         success, output = self._execute(args)
         
@@ -168,6 +177,26 @@ class MushTechCmdExecutor:
             return True, output or f"已更新 '{agent_id}' 的身份信息"
         else:
             return False, output
+
+    def agents_bind(
+        self,
+        agent_id: str,
+        channel: Optional[str] = None,
+        account_id: Optional[str] = None,
+    ) -> Tuple[bool, str]:
+        """为指定智能体添加 channel binding"""
+        bind_channel = (channel or "").strip() or "feishu"
+        account = (account_id or "").strip()
+        bind_value = bind_channel if not account else f"{bind_channel}:{account}"
+
+        args = ["agents", "bind", "--agent", agent_id, "--bind", bind_value]
+        success, output = self._execute(args)
+
+        if success:
+            logger.info(f"[CMD] Agent '{agent_id}' bound to {bind_value}")
+            return True, output or f"已将 '{agent_id}' 绑定到 {bind_value}"
+        logger.error(f"[CMD] Failed to bind agent '{agent_id}': {output}")
+        return False, output
 
 
 # 全局执行器实例
