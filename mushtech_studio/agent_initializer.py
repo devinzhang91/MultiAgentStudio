@@ -10,20 +10,89 @@ from urllib import error as urllib_error
 from urllib import request as urllib_request
 
 from .cmd_executor import get_cmd_executor
-from .config_manager import get_config_manager
+from .config_manager import get_config_manager, StudioConfig
 from .logger import logger
 from .models import Employee
 from .templates.base import AgentConfig
 
 
+class HookClient:
+    """OpenClaw Hook API 客户端"""
+    
+    OPENCLAW_CONFIG_PATH = Path.home() / ".openclaw" / "openclaw.json"
+    
+    def __init__(self, studio_config: Optional[StudioConfig] = None):
+        self.studio_config = studio_config or get_config_manager().get_config()
+    
+    def get_endpoint(self) -> Tuple[str, str]:
+        """读取当前hooks配置并构建Agent Hook地址"""
+        with open(self.OPENCLAW_CONFIG_PATH, 'r', encoding='utf-8') as f:
+            config = json.load(f)
+
+        hooks = config.get("hooks", {}) if isinstance(config, dict) else {}
+        hook_path = str(hooks.get("path") or "/hooks").strip() or "/hooks"
+        if not hook_path.startswith("/"):
+            hook_path = f"/{hook_path}"
+        hook_path = hook_path.rstrip("/")
+        hook_token = str(hooks.get("token") or "").strip()
+        endpoint = f"{self.studio_config.gateway_url}{hook_path}/agent"
+        return endpoint, hook_token
+
+    def post_message(self, endpoint: str, token: str, payload: Dict[str, Any]) -> Tuple[bool, str]:
+        """通过OpenClaw Hook向指定Agent发送消息"""
+        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        headers = {
+            "Content-Type": "application/json",
+        }
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+            headers["x-openclaw-token"] = token
+
+        last_error = "unknown error"
+        for attempt in range(12):
+            try:
+                req = urllib_request.Request(
+                    endpoint,
+                    data=body,
+                    headers=headers,
+                    method="POST",
+                )
+                with urllib_request.urlopen(req, timeout=10) as response:
+                    raw = response.read().decode("utf-8") or "{}"
+                    data = json.loads(raw)
+                    if isinstance(data, dict) and data.get("ok") is True:
+                        return True, ""
+                    last_error = str(data.get("error") if isinstance(data, dict) else raw)
+            except urllib_error.HTTPError as exc:
+                detail = exc.read().decode("utf-8", errors="ignore")
+                last_error = f"HTTP {exc.code}: {detail or exc.reason}"
+            except Exception as exc:
+                last_error = str(exc)
+
+            if attempt < 11:
+                time.sleep(1.5)
+
+        return False, last_error
+
+    def send_to_agent(self, agent_id: str, session_key: str, message: str, name: str = "MushTech Message") -> Tuple[bool, str]:
+        """发送消息到指定Agent的便捷方法"""
+        endpoint, token = self.get_endpoint()
+        payload = {
+            "name": name,
+            "agentId": agent_id,
+            "sessionKey": session_key,
+            "message": message,
+        }
+        return self.post_message(endpoint, token, payload)
+
+
 class AgentInitializer:
     """通过 OpenClaw Hook 初始化 agent 会话与默认文档。"""
-
-    OPENCLAW_CONFIG_PATH = Path.home() / ".openclaw" / "openclaw.json"
 
     def __init__(self):
         self.studio_config = get_config_manager().get_config()
         self.cmd = get_cmd_executor()
+        self.hook_client = HookClient(self.studio_config)
         self.prompts_dir = Path(__file__).parent / "templates" / "prompts"
         self._shared_user_profile = self._load_shared_user_profile()
 
@@ -60,16 +129,11 @@ class AgentInitializer:
         )
 
     def reset_session(self, agent_id: str, session_key: str) -> Tuple[bool, str]:
-        endpoint, token = self._get_hook_endpoint()
-        return self._post_agent_hook_message(
-            endpoint,
-            token,
-            {
-                "name": "MushTech Studio Session Reset",
-                "agentId": agent_id,
-                "sessionKey": session_key,
-                "message": "/new",
-            },
+        return self.hook_client.send_to_agent(
+            agent_id=agent_id,
+            session_key=session_key,
+            message="/new",
+            name="MushTech Studio Session Reset",
         )
 
     def build_bootstrap_message_for_agent(self, agent: AgentConfig) -> str:
@@ -148,16 +212,11 @@ class AgentInitializer:
         reset_after_bootstrap: bool,
         name: str,
     ) -> Tuple[bool, str]:
-        endpoint, token = self._get_hook_endpoint()
-        ok, reason = self._post_agent_hook_message(
-            endpoint,
-            token,
-            {
-                "name": name,
-                "agentId": agent_id,
-                "sessionKey": session_key,
-                "message": message,
-            },
+        ok, reason = self.hook_client.send_to_agent(
+            agent_id=agent_id,
+            session_key=session_key,
+            message=message,
+            name=name,
         )
         if not ok:
             return False, reason
@@ -179,48 +238,6 @@ class AgentInitializer:
     def _load_shared_user_profile(self) -> Dict[str, Any]:
         path = self.prompts_dir / "shared_user.json"
         return json.loads(path.read_text(encoding="utf-8"))
-
-    def _get_hook_endpoint(self) -> Tuple[str, str]:
-        with open(self.OPENCLAW_CONFIG_PATH, "r", encoding="utf-8") as f:
-            config = json.load(f)
-
-        hooks = config.get("hooks", {}) if isinstance(config, dict) else {}
-        hook_path = str(hooks.get("path") or "/hooks").strip() or "/hooks"
-        if not hook_path.startswith("/"):
-            hook_path = f"/{hook_path}"
-        hook_path = hook_path.rstrip("/")
-        hook_token = str(hooks.get("token") or "").strip()
-        endpoint = f"{self.studio_config.gateway_url}{hook_path}/agent"
-        return endpoint, hook_token
-
-    def _post_agent_hook_message(self, endpoint: str, token: str, payload: Dict[str, Any]) -> Tuple[bool, str]:
-        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        headers = {"Content-Type": "application/json"}
-        if token:
-            headers["Authorization"] = f"Bearer {token}"
-            headers["x-openclaw-token"] = token
-
-        last_error = "unknown error"
-        for attempt in range(12):
-            try:
-                req = urllib_request.Request(endpoint, data=body, headers=headers, method="POST")
-                with urllib_request.urlopen(req, timeout=10) as response:
-                    raw = response.read().decode("utf-8") or "{}"
-                    data = json.loads(raw)
-                    if isinstance(data, dict) and data.get("ok") is True:
-                        return True, ""
-                    last_error = str(data.get("error") if isinstance(data, dict) else raw)
-            except urllib_error.HTTPError as exc:
-                detail = exc.read().decode("utf-8", errors="ignore")
-                last_error = f"HTTP {exc.code}: {detail or exc.reason}"
-            except Exception as exc:
-                last_error = str(exc)
-
-            if attempt < 11:
-                time.sleep(1.5)
-
-        logger.warning(f"[AgentInitializer] Hook message failed for {payload.get('agentId')}: {last_error}")
-        return False, last_error
 
     def _compose_bootstrap_message(
         self,

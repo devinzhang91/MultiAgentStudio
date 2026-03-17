@@ -10,14 +10,11 @@ import json
 import secrets
 import shutil
 import subprocess
-import time
 from pathlib import Path
 from datetime import datetime
 from typing import Tuple, List, Dict, Any, Optional
-from urllib import error as urllib_error
-from urllib import request as urllib_request
 
-from .agent_initializer import AgentInitializer
+from .agent_initializer import AgentInitializer, HookClient
 from .cmd_executor import get_cmd_executor
 from .config_manager import get_config_manager
 from .templates import get_template
@@ -34,6 +31,7 @@ class ResetManager:
         self.studio_config = self.config_manager.get_config()
         self.cmd = get_cmd_executor()
         self.initializer = AgentInitializer()
+        self.hook_client = HookClient(self.studio_config)
 
     def _get_backup_dir(self) -> Path:
         """统一返回工作室备份目录。"""
@@ -126,38 +124,6 @@ class ResetManager:
         except Exception as e:
             logger.exception("[ResetManager] 重置过程中发生错误")
             return False, f"重置失败: {str(e)}"
-    
-    def _clean_agents_config(self, agents_list: List[Dict]) -> List[Dict]:
-        """
-        清理agents配置，移除OpenClaw不识别的key
-        
-        Args:
-            agents_list: 原始agents列表
-            
-        Returns:
-            List[Dict]: 清理后的agents列表
-        """
-        cleaned = []
-        for agent in agents_list:
-            # 只保留OpenClaw识别的字段
-            clean_agent = {
-                "id": agent.get("id"),
-                "name": agent.get("name"),
-                "workspace": agent.get("workspace"),
-                "agentDir": agent.get("agentDir"),
-            }
-            
-            # 可选字段：identity
-            if "identity" in agent:
-                clean_agent["identity"] = agent["identity"]
-            
-            # 移除不被识别的字段：
-            # - subagents (包含maxConcurrent, allowlist)
-            # - agentToAgent
-            
-            cleaned.append(clean_agent)
-        
-        return cleaned
     
     def _backup_openclaw_config(self) -> Path:
         """
@@ -581,56 +547,6 @@ class ResetManager:
         except Exception as e:
             logger.error(f"[ResetManager] 删除聊天记录时出错: {e}")
             return 0
-
-    def _get_hook_endpoint(self) -> Tuple[str, str]:
-        """读取当前hooks配置并构建Agent Hook地址"""
-        with open(self.OPENCLAW_CONFIG_PATH, 'r', encoding='utf-8') as f:
-            config = json.load(f)
-
-        hooks = config.get("hooks", {}) if isinstance(config, dict) else {}
-        hook_path = str(hooks.get("path") or "/hooks").strip() or "/hooks"
-        if not hook_path.startswith("/"):
-            hook_path = f"/{hook_path}"
-        hook_path = hook_path.rstrip("/")
-        hook_token = str(hooks.get("token") or "").strip()
-        endpoint = f"{self.studio_config.gateway_url}{hook_path}/agent"
-        return endpoint, hook_token
-
-    def _post_agent_hook_message(self, endpoint: str, token: str, payload: Dict[str, Any]) -> Tuple[bool, str]:
-        """通过OpenClaw Hook向指定Agent发送消息"""
-        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        headers = {
-            "Content-Type": "application/json",
-        }
-        if token:
-            headers["Authorization"] = f"Bearer {token}"
-            headers["x-openclaw-token"] = token
-
-        last_error = "unknown error"
-        for attempt in range(12):
-            try:
-                req = urllib_request.Request(
-                    endpoint,
-                    data=body,
-                    headers=headers,
-                    method="POST",
-                )
-                with urllib_request.urlopen(req, timeout=10) as response:
-                    raw = response.read().decode("utf-8") or "{}"
-                    data = json.loads(raw)
-                    if isinstance(data, dict) and data.get("ok") is True:
-                        return True, ""
-                    last_error = str(data.get("error") if isinstance(data, dict) else raw)
-            except urllib_error.HTTPError as exc:
-                detail = exc.read().decode("utf-8", errors="ignore")
-                last_error = f"HTTP {exc.code}: {detail or exc.reason}"
-            except Exception as exc:
-                last_error = str(exc)
-
-            if attempt < 11:
-                time.sleep(1.5)
-
-        return False, last_error
 
     def _bootstrap_template_agents(self, template) -> Tuple[int, List[str]]:
         """重启后引导所有 Agent 写入默认 Markdown，并在最后发送 /new。"""

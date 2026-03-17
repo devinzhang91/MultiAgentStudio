@@ -18,12 +18,11 @@ class Employee:
     status: str = "offline"  # offline, idle, working, error
     current_task: str = ""
     unread_count: int = 0
-    avatar: str = "🍄"
     enabled: bool = True
     last_error: str = ""
     config: Dict = field(default_factory=dict)
     
-    # 新增：多智能体配置
+    # 多智能体配置
     agent_id: str = ""           # OpenClaw agent ID (如: product-manager, programmer)
     display_name: str = ""       # 显示名称（如: Alex）
     workspace: str = ""          # 工作区路径
@@ -33,7 +32,7 @@ class Employee:
     is_main_brain: bool = False  # 是否为主脑
     agent_type: str = "specialist"  # main_brain, specialist
     
-    # 新增：身份和性格配置
+    # 身份和性格配置
     emoji: str = "🍄"            # 角色emoji标识
     personality: str = ""        # 性格描述
     specialty: str = ""          # 专长/任务描述
@@ -67,28 +66,6 @@ class Employee:
         valid_fields = {k for k in cls.__dataclass_fields__.keys()}
         filtered_data = {k: v for k, v in data.items() if k in valid_fields}
         return cls(**filtered_data)
-
-
-@dataclass
-class MushTechConfig:
-    """开放智能体网关配置"""
-    base_url: str = "http://127.0.0.1:18789"
-    token: str = "291649c89d96626d466cef7dfe1edf0031312f5897ce2402"
-    timeout: int = 120
-    
-    @property
-    def ws_url(self) -> str:
-        """将 http/https 转换为 ws/wss"""
-        if self.base_url.startswith("https://"):
-            return self.base_url.replace("https://", "wss://")
-        elif self.base_url.startswith("http://"):
-            return self.base_url.replace("http://", "ws://")
-        return self.base_url
-    
-    @property
-    def origin(self) -> str:
-        """获取 Origin"""
-        return self.base_url
 
 
 @dataclass
@@ -126,7 +103,6 @@ class EmployeeStore:
         self.data_dir.mkdir(exist_ok=True)
         
         self.employees: Dict[str, Employee] = {}
-        self.openclaw_config = MushTechConfig()
         self.multi_agent_config = MultiAgentConfig()
         
         # 加载studio配置
@@ -140,10 +116,6 @@ class EmployeeStore:
             from .config_manager import get_config_manager
             studio_config = get_config_manager().get_config()
             
-            # 更新openclaw_config
-            self.openclaw_config.base_url = studio_config.gateway_url
-            self.openclaw_config.token = studio_config.gateway_token
-            
             # 更新multi_agent_config
             self.multi_agent_config.mode = studio_config.architecture
             self.multi_agent_config.base_workspace = studio_config.base_workspace
@@ -156,11 +128,7 @@ class EmployeeStore:
         if self.data_file.exists():
             try:
                 data = json.loads(self.data_file.read_text(encoding='utf-8'))
-                # 加载 OpenClaw 配置
-                if "_openclaw_config" in data:
-                    config_data = data.pop("_openclaw_config")
-                    self.openclaw_config = MushTechConfig(**config_data)
-                # 加载员工
+                # 跳过配置数据，只加载员工
                 for emp_id, emp_data in data.items():
                     if not emp_id.startswith("_"):
                         self.employees[emp_id] = Employee.from_dict(emp_data)
@@ -182,7 +150,7 @@ class EmployeeStore:
     def save(self):
         """保存员工数据"""
         # 保存员工数据
-        data = {"_openclaw_config": asdict(self.openclaw_config)}
+        data = {}
         for emp_id, emp in self.employees.items():
             data[emp_id] = emp.to_dict()
         
@@ -273,12 +241,7 @@ class EmployeeStore:
                     setattr(emp, key, value)
             self.save()
     
-    def update_openclaw_config(self, **kwargs):
-        """更新 OpenClaw 配置"""
-        for key, value in kwargs.items():
-            if hasattr(self.openclaw_config, key):
-                setattr(self.openclaw_config, key, value)
-        self.save()
+
     
     def update_multi_agent_config(self, **kwargs):
         """更新多智能体配置"""
@@ -315,7 +278,6 @@ def create_employee_from_agent_config(
     model: str = "volcengine/glm-4.7",
     is_main_brain: bool = False,
     allowed_tools: Optional[List[str]] = None,
-    avatar: str = "🍄",
     emoji: str = "🍄",
     personality: str = "",
     specialty: str = ""
@@ -340,7 +302,6 @@ def create_employee_from_agent_config(
         session_key=session_key,
         model=model,
         allowed_tools=allowed_tools or [],
-        avatar=avatar,
         emoji=emoji,
         personality=personality,
         specialty=specialty

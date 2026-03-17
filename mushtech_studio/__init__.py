@@ -4,8 +4,8 @@ MushTech TUI Studio - 纯键盘极客风格终端应用
 """
 
 from .app import MushTechStudioApp, main
-from .models import Employee, EmployeeStore, MushTechConfig
-from .client import MushTechClient
+from .models import Employee, EmployeeStore, create_employee_from_agent_config
+from .client import MushTechClient, MushTechConfig
 from .message_manager import MessageManager, Message, Conversation, get_message_manager
 from .logger import logger, setup_logger
 
@@ -13,9 +13,10 @@ __all__ = [
     "MushTechStudioApp",
     "main",
     "Employee",
-    "EmployeeStore", 
-    "MushTechConfig",
+    "EmployeeStore",
+    "create_employee_from_agent_config",
     "MushTechClient",
+    "MushTechConfig",
     "MessageManager",
     "Message",
     "Conversation",

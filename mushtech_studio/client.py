@@ -13,14 +13,37 @@ import os
 import time
 import uuid
 from pathlib import Path
+from dataclasses import dataclass
 from typing import Any, Optional, Callable
 
 import aiohttp
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from .models import Employee, MushTechConfig
+from .models import Employee
 from .logger import logger
+
+
+@dataclass
+class MushTechConfig:
+    """OpenClaw WebSocket 连接配置"""
+    base_url: str = "http://127.0.0.1:18789"
+    token: str = ""
+    timeout: int = 120
+    
+    @property
+    def ws_url(self) -> str:
+        """将 http/https 转换为 ws/wss"""
+        if self.base_url.startswith("https://"):
+            return self.base_url.replace("https://", "wss://")
+        elif self.base_url.startswith("http://"):
+            return self.base_url.replace("http://", "ws://")
+        return self.base_url
+    
+    @property
+    def origin(self) -> str:
+        """获取 Origin"""
+        return self.base_url
 
 
 def _now_ms() -> int:
@@ -35,7 +58,7 @@ def _b64url(raw: bytes) -> str:
 class MushTechClient:
     """OpenClaw WebSocket 客户端（支持多员工）"""
 
-    def __init__(self, employee: Employee, config: MushTechConfig, 
+    def __init__(self, employee: Employee, config: "MushTechConfig", 
                  on_message: Optional[Callable[[str, str], None]] = None,
                  on_status_change: Optional[Callable[[str], None]] = None,
                  on_transport: Optional[Callable[[str, str], None]] = None):
@@ -497,9 +520,13 @@ class MushTechClient:
         
         # 只处理 final 状态的消息，避免流式返回导致重复
         if state and state != "final":
-            # 思考状态只触发状态更新，不添加到消息历史
-            if self.on_message:
-                # 使用特殊标记表示这是思考状态，不是实际消息
+            # 尝试提取流式文本内容
+            text = self._extract_text(payload.get("message"))
+            if text and self.on_message:
+                # 有文本内容，传递流式增量给 UI
+                self.on_message("__stream__", text)
+            elif self.on_message:
+                # 没有文本，只是思考状态通知
                 self.on_message("__thinking__", "thinking")
             return
 

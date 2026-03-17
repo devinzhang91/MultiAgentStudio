@@ -1,327 +1,78 @@
-# 🦞 MultiAgentStudio（MushTech TUI Studio）
+# 🦞 MultiAgentStudio
 
-<p align="center">
-  <strong>基于 OpenClaw 的多智能体代码外包团队 TUI 管理工具</strong><br>
-  <em>纯键盘驱动的终端应用，用于管理多智能体团队并与 Gateway 进行 WebSocket 通信</em>
-</p>
+基于 OpenClaw 的多智能体团队 TUI 管理工具。
 
-<p align="center">
-  <img src="https://img.shields.io/badge/Python-3.8+-blue.svg" alt="Python 3.8+">
-  <img src="https://img.shields.io/badge/OpenClaw-Compatible-green.svg" alt="OpenClaw Compatible">
-  <img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="MIT License">
-</p>
+[![Python 3.8+](https://img.shields.io/badge/Python-3.8+-blue.svg)](https://python.org)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ---
 
-## 📖 项目介绍
+## ✨ 功能特性
 
-**MultiAgentStudio**（又称 **MushTech TUI Studio**）是一个基于 [OpenClaw](https://github.com/mushtech-ai/openclaw) 的多智能体团队管理终端应用。它提供了一个纯键盘驱动的 TUI（Text User Interface）界面，让你可以在终端中轻松管理一支由 AI 智能体组成的开发团队。
-
-### 与 OpenClaw 的关系
-
-- **MultiAgentStudio** 是 OpenClaw 的 **TUI 客户端**，提供了可视化的管理界面
-- 通过本工具，你可以：
-  - 可视化配置和管理 OpenClaw Gateway 连接
-  - 创建、删除、编辑智能体（Agents）
-  - 与多个智能体进行实时对话
-  - 监控智能体的工作状态和消息
+- **多智能体管理**：创建、删除、编辑智能体，实时监控状态
+- **智能聊天**：独立会话上下文，消息持久化，思考状态提示
+- **模板系统**：内置软件工程、Remotion 视频、股票分析等团队模板
+- **纯键盘操作**：Vim 风格快捷键，无需鼠标
 
 ---
 
-## ✨ 核心功能
+## 🚀 快速开始
 
-### 🎯 多智能体管理
-- **智能体列表**：一览所有团队成员的状态和最近消息
-- **增删改查**：添加新员工、删除、编辑智能体配置
-- **实时状态监控**：在线/离线/工作中状态一目了然
-- **未读消息提醒**：卡片边框变色 + 数字徽章提醒
-
-### 💬 智能聊天系统
-- **多会话隔离**：每个智能体拥有独立的会话上下文
-- **实时消息**：发送后立即显示，AI 回复自动刷新
-- **消息持久化**：退出后消息历史保留，随时恢复对话
-- **思考状态提示**：显示 AI 正在处理的动画状态
-
-### ⚙️ 配置管理
-- **Gateway 配置**：设置连接地址、Token、端口
-- **工作区配置**：自定义项目工作目录
-- **架构选择**：支持主脑+专才模式（混合架构）
-- **模板系统**：内置 Remotion 视频工作室、软件工程、股票分析等模板
-
-### 🎨 模板系统
-预置多种团队配置模板：
-- **Remotion 视频工作室**：视频导演、脚本编剧、视觉设计师、后期剪辑师、Remotion开发专员
-- **软件工程团队**：产品经理、UI设计师、程序员、测试工程师、文档工程师
-- **股票分析团队**：首席分析师、宏观研究员、行业研究员、技术分析师、风险评估师
-
----
-
-## 🖼️ 界面预览
-
-### 🎛️ 监控看板（主界面）
-显示所有智能体的工作状态、最新消息、在线情况，纯键盘导航操作。
-
-<p align="center">
-  <img src="images/UI_MAIN.png" alt="监控看板" width="90%">
-</p>
-
-### 💬 聊天界面
-与单个智能体进行深入对话，支持发送消息、清屏、返回等操作。
-
-<p align="center">
-  <img src="images/UI_CHAT.png" alt="聊天界面" width="90%">
-</p>
-
-### ⚙️ 设置界面
-配置 Gateway 连接参数、工作区路径、工作室架构和模板。
-
-<p align="center">
-  <img src="images/UI_CONFIG.png" alt="设置界面" width="90%">
-</p>
-
----
-
-## 🏗️ 项目结构
-
-```
-openclaw-tui-studio/
-├── mushtech_studio/            # 主程序包
-│   ├── __init__.py             # 包入口
-│   ├── __main__.py             # python -m 入口
-│   ├── app.py                  # 主应用（员工网格、未读提醒、导航）
-│   ├── models.py               # 数据模型（Employee、MultiAgentConfig）
-│   ├── client.py               # WebSocket 客户端（多智能体会话隔离）
-│   ├── chat_screen.py          # 聊天界面（即时消息显示）
-│   ├── agent_management_screen.py  # 智能体管理界面（增删改查）
-│   ├── config_screen.py        # 配置界面
-│   ├── config_manager.py       # 配置管理器
-│   ├── message_manager.py      # 全局消息管理器
-│   ├── cmd_executor.py         # MushTech CMD 命令执行器
-│   ├── logger.py               # 日志模块
-│   ├── cli.py                  # 命令行接口
-│   ├── utils.py                # 工具函数
-│   ├── agent_initializer.py    # 智能体初始化器
-│   └── templates/              # 团队模板
-│       ├── __init__.py
-│       ├── base.py             # 基础模板类
-│       ├── remotion_video.py   # Remotion视频工作室模板
-│       ├── software_engineering.py  # 软件工程团队模板
-│       ├── stock_analysis.py   # 股票分析团队模板
-│       └── prompts/            # 员工性格定义
-│           ├── remotion_video_docs.json
-│           ├── software_engineering_docs.json
-│           └── stock_analysis_docs.json
-│
-├── data/                       # 数据存储
-│   ├── employees.json          # 员工数据存储
-│   ├── multi_agent_config.json # 多智能体配置
-│   └── identities/             # 员工身份密钥（Ed25519，不提交git）
-│
-├── logs/                       # 运行日志
-│   └── mushtech_*.log          # 应用日志文件
-│
-├── images/                     # 截图资源
-│   ├── UI_MAIN.png             # 监控看板截图
-│   ├── UI_CHAT.png             # 聊天界面截图
-│   └── UI_CONFIG.png           # 设置界面截图
-│
-├── run.sh                      # 一键启动脚本
-├── README.md                   # 项目说明
-└── LICENSE                     # 许可证
-```
-
----
-
-## 🌟 特色亮点
-
-### 1. 🎮 纯键盘操作
-- 无需鼠标，完全使用键盘导航
-- Vim 风格快捷键支持
-- 高效的快捷键系统
-
-### 2. 🧠 混合架构支持
-采用 **主脑+专才模式**（生产级推荐）：
-
-```
-用户请求
-    ↓
-🎯 主脑（Product Manager/Lead Analyst/Video Director）
-    ↓ agentToAgent 通信
-├───├───├───├───┐
-◇       ◇       ◇       ◇
-🎨    💻    🧪    📝
-UI     开发    测试    文档
-设计师 工程师  工程师  工程师
-```
-
-### 3. 🔐 会话隔离
-- 每个智能体独立的 session_key（格式：`agent:<id>:main`）
-- 完全独立的对话历史和上下文
-- 工作区隔离：每个智能体有自己的工作目录
-
-### 4. 🔄 Agent 间通信
-- 支持 `agentToAgent` 通信
-- 主脑可以向专才分派任务
-- 协作完成复杂项目
-
-### 5. 💾 数据持久化
-- 消息历史自动保存到本地
-- 配置自动同步
-- 支持配置导入导出
-
-### 6. 🚀 后台连接
-- 即使退出聊天界面，WebSocket 连接保持
-- 消息持续接收，下次进入时显示
-- 未读消息自动提醒
-
----
-
-## 📋 必要条件
-
-### 系统要求
-- **操作系统**: macOS / Linux / Windows (WSL)
-- **Python**: 3.8 或更高版本
-- **Node.js**: 16.x 或更高版本（用于 OpenClaw CLI）
-
-### 前置依赖
-1. **OpenClaw CLI** - 智能体管理命令行工具
-2. **OpenClaw Gateway** - 本地或远程 Gateway 服务
-
----
-
-## 🚀 部署步骤
-
-### 方式一：一键部署脚本（推荐）
-
-使用 `run.sh` 脚本自动完成环境检查和启动：
-
-```bash
-# 1. 克隆项目
-git clone https://github.com/devinzhang91/MultiAgentStudio.git
-cd MultiAgentStudio
-
-# 2. 运行一键启动脚本
-./run.sh
-```
-
-**脚本功能说明：**
-- ✅ 自动检查并创建 Python 虚拟环境（`.venv`）
-- ✅ 自动安装依赖包（`textual`, `aiohttp`, `cryptography`）
-- ✅ 自动激活虚拟环境
-- ✅ 启动 TUI 应用
-
-**脚本参数：**
-```bash
-# 带参数运行（如 reset 重置）
-./run.sh reset
-```
-
-### 方式二：手动部署
-
-#### 1. 安装 OpenClaw
-
-请参考 [OpenClaw 官方安装文档](https://docs.openclaw.ai/zh-CN/install) 完成 OpenClaw CLI 和 Gateway 的安装配置。
-
-#### 2. 克隆项目并安装依赖
+### 安装
 
 ```bash
 # 克隆项目
 git clone https://github.com/devinzhang91/MultiAgentStudio.git
 cd MultiAgentStudio
 
-# 创建 Python 虚拟环境
-python3 -m venv .venv
-source .venv/bin/activate  # Linux/Mac
-# 或 .venv\Scripts\activate  # Windows
-
-# 安装 Python 依赖
-pip install textual aiohttp cryptography
+# 运行启动脚本
+./run.sh
 ```
 
-#### 3. 配置 Gateway
+### CLI 命令
 
-确保你有一个运行的 OpenClaw Gateway，获取以下信息：
-- Gateway URL（如：`http://127.0.0.1:18789`）
-- Gateway Token（认证令牌）
+```bash
+# 启动主界面（默认）
+python3 -m mushtech_studio
+
+# 启动配置界面
+python3 -m mushtech_studio config
+
+# 重置配置
+python3 -m mushtech_studio reset
+
+# 强制重置（跳过确认）
+python3 -m mushtech_studio reset --force
+```
 
 ---
 
-## 🎮 使用方法
+## ⌨️ 快捷键
 
-### 启动应用
-
-```bash
-# 方式1：使用启动脚本（推荐）
-./run.sh
-
-# 方式2：直接运行
-python3 -m mushtech_studio
-
-# 方式3：作为模块运行
-python3 mushtech_studio/app.py
-```
-
-### 主界面操作
-
+### 主界面
 | 按键 | 功能 |
 |------|------|
-| `↑↓←→` | 导航选择员工卡片 |
-| `Enter` | 打开选中员工的聊天界面 |
-| `a` | 添加新员工 |
-| `d` | 删除选中员工 |
-| `m` | 打开智能体管理界面 |
-| `c` | 显示/隐藏配置面板 |
+| `↑↓←→` | 导航选择 |
+| `Enter` | 打开聊天 |
+| `m` | 管理智能体 |
 | `r` | 刷新列表 |
-| `q` | 退出应用 |
+| `q` | 退出 |
 | `?` | 显示帮助 |
 
-### 聊天界面操作
-
+### 聊天界面
 | 按键 | 功能 |
 |------|------|
 | `Enter` | 发送消息 |
-| `Tab` | 切换焦点（输入框/按钮） |
-| `Shift+Tab` | 反向切换焦点 |
-| `ESC` | 返回主界面 |
-| `Ctrl+C` | 退出应用 |
-
-### 配置界面操作
-
-| 按键 | 功能 |
-|------|------|
-| `↑↓` | 选择配置项 |
-| `Enter` | 编辑选中项 |
-| `S` | 保存配置 |
-| `ESC` | 退出配置界面 |
-
-### 智能体管理界面操作
-
-| 按键 | 功能 |
-|------|------|
-| `↑↓` | 在列表中上下移动 |
-| `→` / `Enter` | 从列表进入配置面板 |
-| `←` | 从配置面板返回列表 |
-| `A` | 添加新智能体 |
-| `S` | 保存当前配置 |
-| `D` | 删除当前智能体 |
-| `R` | 刷新列表 |
+| `Tab` | 切换焦点 |
 | `ESC` | 返回主界面 |
 
 ---
 
-## ⚙️ 配置说明
+## ⚙️ 配置
 
-### 配置文件位置
-
-- **工作室配置**: `data/studio_config.json`
-- **员工数据**: `data/employees.json`
-- **多智能体配置**: `data/multi_agent_config.json`
-- **消息历史**: `data/messages_<agent_id>.jsonl`（不提交git）
-
-### 基础配置示例
+配置文件位置：`data/studio_config.json`
 
 ```json
-// data/studio_config.json
 {
   "gateway_url": "http://127.0.0.1:18789",
   "gateway_token": "your-token-here",
@@ -331,190 +82,78 @@ python3 mushtech_studio/app.py
 }
 ```
 
-### 主脑 Channel 设置（飞书集成）
+配置项说明：
+- **gateway_url**: OpenClaw Gateway 地址
+- **gateway_token**: Gateway 鉴权令牌
+- **architecture**: 架构模式（centralized/decentralized/hybrid）
+- **studio_type**: 团队模板类型
+- **base_workspace**: 工作区根目录
 
-要实现通过飞书向小组长（主脑）下达命令，需要配置主脑的 Channel 绑定：
+---
 
-```json
-// data/studio_config.json
-{
-  "gateway_url": "http://127.0.0.1:18789",
-  "gateway_token": "your-token-here",
-  "architecture": "hybrid",
-  "studio_type": "software_engineering",
-  "base_workspace": "/path/to/workspace",
-  
-  "lead_channels": {
-    "mush-pm": {
-      "channel_id": "your_feishu_channel_id",
-      "channel_type": "feishu",
-      "webhook_url": "https://open.feishu.cn/open-apis/bot/v2/hook/xxx"
-    }
-  }
-}
+## 🎨 模板系统
+
+### 软件工程团队
+- **mush-pm**: 产品经理（主脑）
+- **mush-ui**: UI 设计师
+- **mush-dev**: 程序员
+- **mush-qa**: 测试工程师
+- **mush-doc**: 文档工程师
+
+### Remotion 视频工作室
+- **video-director**: 视频导演（主脑）
+- **script-writer**: 脚本编剧
+- **visual-designer**: 视觉设计师
+- **remotion-dev**: Remotion 开发
+- **video-editor**: 后期剪辑
+
+### 股票分析团队
+- **lead-analyst**: 首席分析师（主脑）
+- **macro-researcher**: 宏观研究员
+- **sector-researcher**: 行业研究员
+- **technical-analyst**: 技术分析师
+- **risk-assessor**: 风险评估师
+
+---
+
+## 🏗️ 项目结构
+
 ```
-
-**配置说明：**
-- `lead_channels`: 定义主脑与通讯频道的绑定关系
-- `mush-pm`: 主脑员工ID（根据模板不同，可能是 `video-director`、`lead-analyst` 等）
-- `channel_id`: 飞书频道ID
-- `channel_type`: 通讯类型（目前支持 `feishu`）
-- `webhook_url`: 飞书机器人 Webhook 地址
-
-**获取飞书 Webhook：**
-1. 在飞书群中添加自定义机器人
-2. 复制机器人的 Webhook 地址
-3. 将地址填入配置中的 `webhook_url`
-
-**使用方式：**
-- 在绑定的飞书频道中@机器人发送消息
-- 消息会自动转发给对应的主脑智能体
-- 主脑会根据消息内容分配任务给团队成员
-
-### 重置配置
-
-```bash
-# 重置工作室（会重建配置、重新创建 Agents）
-./run.sh reset
-# 或
-python3 -m mushtech_studio reset
+openclaw-tui-studio/
+├── mushtech_studio/       # 主程序包
+│   ├── app.py             # 主应用
+│   ├── cli.py             # 命令行接口
+│   ├── client.py          # WebSocket 客户端
+│   ├── models.py          # 数据模型
+│   ├── message_manager.py # 消息管理
+│   └── templates/         # 团队模板
+├── data/                  # 数据存储
+├── logs/                  # 运行日志
+└── run.sh                 # 启动脚本
 ```
 
 ---
 
-## 🎭 Agents 性格特点说明
+## 📋 必要条件
 
-每个智能体都有独特的性格定义，影响其思考方式和工作风格。
-
-### 🎬 Remotion 视频工作室
-
-| 角色 | 性格特点 | 工作风格 |
-|------|---------|---------|
-| **video-director**<br>视频导演 | 强叙事意识、审美判断明确、善于统筹、情绪敏感、结果导向 | 主脑式督办，推动多轮创意对齐，定时核对进度，在创意与执行间做取舍 |
-| **script-writer**<br>脚本编剧 | 擅长叙事、语言灵活、对节奏敏感、富有想象力 | 文字服务于画面，每段文字都有明确功能，主动补齐叙事空白 |
-| **visual-designer**<br>视觉设计师 | 构图敏锐、色彩准确、重视氛围、品牌意识强 | 设计先服务内容，再追求风格，把抽象气质转为具体执行规范 |
-| **remotion-dev**<br>Remotion开发 | 技术自信、讲求性能、工程思维强、尊重设计 | 把创意方案转成高质量可维护代码，持续与导演设计沟通 |
-| **video-editor**<br>后期剪辑 | 节奏敏锐、善于取舍、成片意识强、对观感异常敏锐 | 通过节奏转场声音让素材成为完整作品，是最终完成度的守门人 |
-
-### 💻 软件工程团队
-
-| 角色 | 性格特点 | 工作风格 |
-|------|---------|---------|
-| **mush-pm**<br>产品经理 | 强组织力、高责任心、善于取舍、对进度敏感、擅长协调冲突 | 主脑式节奏控制器，把模糊需求拆成清晰任务，定时核对进度 |
-| **mush-ui**<br>UI设计师 | 重视体验、关注细节、有品牌感、善于可视化表达 | 为复杂功能找到清晰好看可用的界面表达，主动为开发落地着想 |
-| **mush-dev**<br>程序员 | 追求质量、系统化思考、注重性能、喜欢自动化 | 把需求稳定落地成可靠清晰可维护的代码，主动同步技术风险 |
-| **mush-qa**<br>测试工程师 | 怀疑精神、边界意识、系统验证、记录严谨 | 比任何人更早发现问题，让发布前的风险可见可控 |
-| **mush-doc**<br>文档工程师 | 结构化、耐心、信息敏感、重视一致性 | 把复杂信息整理成可传达可复用可维护的文档资产 |
-
-### 📈 股票分析团队
-
-| 角色 | 性格特点 | 工作风格 |
-|------|---------|---------|
-| **lead-analyst**<br>首席分析师 | 理性、耐心、注重估值、尊重概率、善于总结、强统筹力 | 主脑式研究负责人，整合多维度输入形成稳健投资判断，定时核对研究进度 |
-| **macro-researcher**<br>宏观研究员 | 宏观视角、善看联动、重因果链、关注政策、警惕拐点 | 从宏观周期流动性政策视角识别市场驱动力，提供研究基础框架 |
-| **sector-researcher**<br>行业研究员 | 善于调研、关注行业演进、重商业模式、思维务实 | 深入行业公司一线逻辑，找到真正有持续性的竞争优势 |
-| **technical-analyst**<br>技术分析师 | 重纪律、擅长节奏判断、关注仓位时机、尊重市场反馈 | 用价格量能结构帮助团队理解市场共识与节奏，用于辅助决策 |
-| **risk-assessor**<br>风险评估师 | 尾部风险意识、逆向思考、善做压力测试、关注脆弱性 | 在乐观叙事外持续发现脆弱点极端情景隐藏成本，是生存概率守门人 |
-
-### 团队协作原则
-
-1. **主脑负责制**：每个团队都有明确的主脑角色，负责统筹和进度核对
-2. **三次核对工作流**：
-   - 【任务接收】→ 有疑问立即提出
-   - 【第一次核对】→ 与主脑核对任务细节和实现方案
-   - 【中途同步】→ 定时汇报进度
-   - 【交付复核】→ 最终确认再交付
-3. **强制提问机制**：所有角色都必须"第一时间提出疑问"，禁止沉默
-4. **正确使用 Skills**：各角色根据职责调用对应 skills，不越权替代
+- **Python**: 3.8+
+- **OpenClaw CLI**: 已安装并配置
+- **OpenClaw Gateway**: 运行中
 
 ---
 
-## 🔧 开发指南
-
-### 运行测试
+## 🔧 开发
 
 ```bash
 # 语法检查
 python3 -m py_compile mushtech_studio/*.py
 
-# 导入测试
-python3 -c "from mushtech_studio.models import Employee; print('OK')"
-```
-
-### 查看日志
-
-```bash
-# 实时查看日志
+# 查看日志
 tail -f logs/mushtech_*.log
 ```
 
 ---
 
-## 📝 多智能体架构详解
-
-### 会话隔离机制
-
-每个智能体有独立的会话键：
-
-```
-agent:product-manager:main
-agent:ui-designer:main
-agent:programmer:main
-agent:code-tester:main
-agent:document-writer:main
-```
-
-这确保了：
-- ✅ 完全独立的对话历史
-- ✅ 完全独立的上下文
-- ✅ 完全独立的状态
-
-### 工作区隔离
-
-```
-~/.openclaw/MushTech/
-├── workspace-product-manager/    # 主脑独立工作区
-├── workspace-ui-team/            # UI团队工作区
-├── workspace-dev-team/           # 开发团队工作区
-├── workspace-qa-team/            # 测试团队工作区
-└── workspace-doc-team/           # 文档团队工作区
-
-~/.openclaw/agents/
-├── product-manager/agent/        # 主脑独立 agentDir
-├── ui-designer/agent/            # UI独立 agentDir
-├── programmer/agent/             # 开发独立 agentDir
-├── code-tester/agent/            # 测试独立 agentDir
-└── document-writer/agent/        # 文档独立 agentDir
-```
-
----
-
-## 📚 参考文档
-
-- [OpenClaw 官方文档](https://docs.openclaw.ai/)
-- [OpenClaw 安装指南](https://docs.openclaw.ai/zh-CN/install)
-- [Textual 文档](https://textual.textualize.io/) - TUI 框架
-
----
-
-## 🤝 贡献指南
-
-欢迎提交 Issue 和 Pull Request！
-
-1. Fork 本仓库
-2. 创建你的 Feature Branch (`git checkout -b feature/AmazingFeature`)
-3. 提交你的更改 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到 Branch (`git push origin feature/AmazingFeature`)
-5. 打开一个 Pull Request
-
----
-
 ## 📄 许可证
 
-本项目采用 [MIT](LICENSE) 许可证。
-
----
-
-<p align="center">
-  Made with ❤️ by <a href="https://github.com/devinzhang91">devinzhang91</a>
-</p>
+[MIT](LICENSE)

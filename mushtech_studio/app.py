@@ -168,8 +168,11 @@ class MushTechStudioApp(App):
                 header = self._format_row(" 👤 ", "NAME", "ROLE", "STATUS", "MESSAGE", is_header=True)
                 yield Static(header, classes="employee-header")
                 
-                # 员工行
-                self.employee_list = sorted(self.store.employees.values(), key=lambda e: e.id)
+                # 员工行 - 主脑放在第一位，其他按id排序
+                self.employee_list = sorted(
+                    self.store.employees.values(), 
+                    key=lambda e: (not e.is_main_brain, e.id)
+                )
                 logger.info(f"Creating {len(self.employee_list)} employee rows")
                 for emp in self.employee_list:
                     item = self._create_employee_row(emp)
@@ -268,22 +271,22 @@ class MushTechStudioApp(App):
     def _on_message_received(self, emp_id: str, sender: str, content: str):
         """收到消息回调"""
         try:
-            self.app.call_from_thread(self._update_card, emp_id)
+            self.app.call_later(self._update_card, emp_id)
         except Exception:
             pass
     
     def _on_unread_changed(self, emp_id: str, unread_count: int):
         """未读数变化回调"""
         try:
-            self.app.call_from_thread(self._update_card, emp_id)
-            self.app.call_from_thread(self._update_status_bar)
+            self.app.call_later(self._update_card, emp_id)
+            self.app.call_later(self._update_status_bar)
         except Exception:
             pass
     
     def _on_status_changed(self, emp_id: str, status: str):
         """状态变化回调"""
         try:
-            self.app.call_from_thread(self._update_card, emp_id)
+            self.app.call_later(self._update_card, emp_id)
         except Exception:
             pass
     

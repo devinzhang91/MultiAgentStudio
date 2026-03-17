@@ -103,7 +103,11 @@ class AgentManagementScreen(Screen):
     
     def _load_data(self):
         self.store.load()
-        self.employees = sorted(self.store.employees.values(), key=lambda e: e.id)
+        # 排序：主脑放在第一位，其他按id排序
+        self.employees = sorted(
+            self.store.employees.values(), 
+            key=lambda e: (not e.is_main_brain, e.id)
+        )
         
         list_container = self.query_one("#list", Vertical)
         list_container.remove_children()
@@ -227,7 +231,6 @@ class AgentManagementScreen(Screen):
                 model=data.get("model", "volcengine/glm-4.7"),
                 is_main_brain=False,
                 allowed_tools=[],
-                avatar=data.get("emoji", "💼"),
                 emoji=data.get("emoji", "💼"),
             )
             emp.id = emp_id

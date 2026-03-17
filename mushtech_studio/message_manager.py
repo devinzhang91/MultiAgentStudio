@@ -20,8 +20,9 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Callable
 from datetime import datetime
 
-from .models import Employee, EmployeeStore, MushTechConfig
-from .client import MushTechClient
+from .models import Employee, EmployeeStore
+from .client import MushTechClient, MushTechConfig
+from .config_manager import get_config_manager
 from .logger import logger
 
 
@@ -111,11 +112,6 @@ class OpenClawSessionReader:
         self.sessions_dir = Path.home() / ".openclaw" / "agents" / agent_id / "sessions"
         self.sessions_file = self.sessions_dir / "sessions.json"
     
-    def get_session_id(self, session_key: str = "main") -> Optional[str]:
-        """从 sessions.json 获取 session ID"""
-        if not self.sessions_file.exists():
-            return None
-
     def get_session_file(self, session_key: str = "main") -> Optional[Path]:
         """从 sessions.json 获取 sessionFile（优先），回退到 sessionId 推导的 jsonl 文件。"""
         if not self.sessions_file.exists():
@@ -229,7 +225,14 @@ class MessageManager:
         self._initialized = True
         
         self.store = store or EmployeeStore()
-        self.config = self.store.openclaw_config
+        
+        # 从 config_manager 创建 WebSocket 配置
+        studio_config = get_config_manager().get_config()
+        self.config = MushTechConfig(
+            base_url=studio_config.gateway_url,
+            token=studio_config.gateway_token,
+            timeout=120
+        )
         
         # 对话存储
         self.conversations: Dict[str, Conversation] = {}
@@ -489,7 +492,8 @@ class MessageManager:
         """处理收到的消息（WebSocket 回调）"""
         logger.info(f"Message from {emp_id}/{sender}: {content[:50]}...")
         
-        if sender == "__thinking__":
+        if sender in ("__thinking__", "__stream__"):
+            # 流式/思考状态通知，直接透传给 UI，不保存到消息历史
             if self.on_message_received:
                 try:
                     self.on_message_received(emp_id, sender, content)
@@ -529,8 +533,35 @@ class MessageManager:
             except Exception as e:
                 logger.error(f"Error in callback: {e}")
 
+    # 需要过滤的传输层心跳事件类型
+    _TRANSPORT_NOISE_EVENTS = {"tick", "health"}
+
     def _handle_transport(self, emp_id: str, direction: str, payload: str):
-        """记录 WS 收发信息到本地 messages 文件（仅落盘，不进入对话框）。"""
+        """记录 WS 收发信息到本地 messages 文件（仅落盘，不进入对话框）。
+        
+        自动过滤：
+        - 心跳事件（tick、health）
+        - 流式消息增量（chat 事件 state=delta）
+        只保留完整消息（chat 事件 state=final）。
+        """
+        # 过滤心跳事件和流式增量：检查 payload 是否包含事件类型
+        try:
+            payload_data = json.loads(payload)
+            event_type = payload_data.get("event") or payload_data.get("type")
+            
+            # 过滤心跳事件
+            if event_type in self._TRANSPORT_NOISE_EVENTS:
+                return
+            
+            # 过滤流式消息增量（只保留 final 状态的 chat 事件）
+            if event_type == "chat":
+                event_payload = payload_data.get("payload", {})
+                state = event_payload.get("state") if isinstance(event_payload, dict) else None
+                if state and state != "final":
+                    return  # 跳过 delta 和 thinking 状态，只保留 final
+        except (json.JSONDecodeError, Exception):
+            pass  # 解析失败继续记录
+        
         direction_label = "WS→" if direction == "send" else "WS←"
         record = {
             "__transport__": True,

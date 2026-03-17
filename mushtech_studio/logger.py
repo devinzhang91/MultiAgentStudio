@@ -14,10 +14,10 @@ class NoiseFilter(logging.Filter):
     # 需要屏蔽的日志关键词
     NOISE_PATTERNS = [
         '"event":"tick"',           # WebSocket tick 事件
-        '[emp-ui] WS recv:',          # WebSocket 接收消息
+        '] WS recv:',                 # WebSocket 接收消息（匹配所有 emp-*）
         'Chat event, state=delta',    # 聊天增量事件
         '/__thinking__: thinking',    # 思考消息发送
-        'Message received from emp-ui: thinking',  # 思考消息接收
+        'Message received from emp-', # 思考消息接收（匹配所有 emp-*）
     ]
     
     def filter(self, record: logging.LogRecord) -> bool:
@@ -65,9 +65,9 @@ def setup_logger(name: str = "mushtech", level: int = logging.DEBUG) -> logging.
     file_handler.addFilter(noise_filter)  # 添加噪声过滤器
     logger.addHandler(file_handler)
     
-    # 控制台处理器 - 只记录 INFO 及以上
+    # 控制台处理器 - 只记录 WARNING 及以上（避免 INFO 干扰终端显示）
     console_handler = logging.StreamHandler(sys.stderr)
-    console_handler.setLevel(logging.INFO)
+    console_handler.setLevel(logging.WARNING)
     console_handler.setFormatter(formatter)
     console_handler.addFilter(noise_filter)  # 添加噪声过滤器
     logger.addHandler(console_handler)

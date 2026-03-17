@@ -4,7 +4,8 @@
 """
 
 import asyncio
-from typing import List
+from datetime import datetime
+from typing import List, Optional
 
 from textual.screen import Screen
 from textual.widgets import Static, Input, Button
@@ -108,6 +109,7 @@ class ChatScreen(Screen):
         self._original_callback = None
         self._connected_shown = False  # 标记是否已显示过连接成功消息
         self._thinking_timer = None  # 思考状态定时器
+        self._streaming_widget: Optional[Static] = None  # 流式输出占位 widget
         # logger.info(f"[ChatScreen:{self.emp_id}] Initialized")
     
     def compose(self):
@@ -204,37 +206,39 @@ class ChatScreen(Screen):
         self._update_status_bar()
     
     def _on_message_received(self, emp_id: str, sender: str, content: str):
-        """收到消息回调 - 此方法可能在后台线程中被调用"""
+        """收到消息回调 - 此方法在 asyncio 事件循环中被调用"""
         if emp_id == self.emp_id:
             # logger.info(f"[ChatScreen:{self.emp_id}] Message received from {sender}: {content[:50]}...")
             
             # 处理特殊发送者 - 思考状态通知
             if sender == "__thinking__":
-                # 使用 call_from_thread 确保在主线程更新UI
+                # 使用 call_later 确保在主线程更新UI（asyncio 事件循环中安全调用）
                 def set_thinking():
                     self.is_thinking = True
-                try:
-                    self.app.call_from_thread(set_thinking)
-                except Exception:
-                    set_thinking()
+                self.app.call_later(set_thinking)
                 return
             
-            # 使用 call_from_thread 确保在主线程更新UI
+            # 处理流式输出 - 直接在原有 widget 上更新，不做全量刷新
+            if sender == "__stream__":
+                def update_stream(text=content):
+                    # 切换到流式状态，清除「思考中」提示
+                    self.is_thinking = False
+                    self._update_streaming_widget(text)
+                self.app.call_later(update_stream)
+                return
+            
+            # 使用 call_later 确保在主线程更新UI
             def update_ui():
-                # 收到实际回复，清除思考状态
+                # 收到实际回复，清除思考状态和流式 widget
                 if sender == self.employee.name or sender not in ["system", "user"]:
                     self.is_thinking = False
+                    self._remove_streaming_widget()
                 
                 # 更新消息列表（这会触发 watch_messages 自动刷新）
                 self.messages = self.msg_manager.get_messages(self.emp_id)
             
             # 在主线程执行UI更新
-            try:
-                self.app.call_from_thread(update_ui)
-            except Exception as e:
-                logger.error(f"[ChatScreen:{self.emp_id}] Failed to schedule UI update: {e}")
-                # 如果调度失败，直接更新
-                update_ui()
+            self.app.call_later(update_ui)
         
         # 调用原始回调
         if self._original_callback:
@@ -275,6 +279,36 @@ class ChatScreen(Screen):
         else:
             # 移除思考中提示
             self._remove_thinking_indicator()
+    
+    def _update_streaming_widget(self, text: str):
+        """创建或更新流式输出 widget（不做全量刷新，直接 update）"""
+        try:
+            container = self.query_one("#messages-container", ScrollableContainer)
+            if self._streaming_widget is None:
+                # 首次：创建流式 widget 并挂载到底部
+                markdown_body = Markdown(text)
+                renderable = Group(Text("[🤖]"), markdown_body)
+                widget = Static(renderable, classes="message message-agent")
+                widget.is_streaming_widget = True  # type: ignore
+                container.mount(widget)
+                self._streaming_widget = widget
+            else:
+                # 后续 token：直接更新现有 widget 内容
+                markdown_body = Markdown(text)
+                renderable = Group(Text("[🤖]"), markdown_body)
+                self._streaming_widget.update(renderable)
+            container.scroll_end()
+        except Exception as e:
+            logger.debug(f"[ChatScreen:{self.emp_id}] Failed to update streaming widget: {e}")
+    
+    def _remove_streaming_widget(self):
+        """移除流式 widget（收到 final 消息后调用）"""
+        if self._streaming_widget is not None:
+            try:
+                self._streaming_widget.remove()
+            except Exception:
+                pass
+            self._streaming_widget = None
     
     def _add_thinking_indicator(self):
         """添加思考中指示器"""
@@ -326,41 +360,65 @@ class ChatScreen(Screen):
         except Exception as e:
             pass  # logger.warning(f"[ChatScreen:{self.emp_id}] Failed to update status bar: {e}")
     
+    def _format_time(self, timestamp: str) -> str:
+        """格式化时间戳为 HH:MM"""
+        try:
+            dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+            return dt.strftime("%H:%M")
+        except:
+            return ""
+    
     def _create_message_widget(self, msg: Message) -> Static:
-        """创建消息组件"""
-        if msg.sender == "user":
-            prefix = "[你]"
-            css_class = "message-user"
-        elif msg.sender == "system":
-            prefix = "[*]"
-            css_class = "message-system"
-        else:
-            # 使用 🤖 作为 OpenClaw 的头像
-            prefix = "[🤖]"
-            css_class = "message-agent"
+        """创建消息组件 - 带头像、时间、边框，支持 Markdown"""
+        from rich.panel import Panel
         
-        # 显示完整消息内容（不进行截断）
-        display_content = msg.content
-        if msg.sender == "system":
-            return Static(Text(f"{prefix} {display_content}"), classes=f"message {css_class}")
-
-        markdown_body = Markdown(display_content or "")
-        renderable = Group(Text(prefix), markdown_body)
-        return Static(renderable, classes=f"message {css_class}")
+        time_str = self._format_time(msg.timestamp)
+        
+        if msg.sender == "user":
+            emoji = "👤"
+            name = "你"
+            css_class = "message-user"
+            color = "cyan"
+            # 标题：emoji + 名字(彩色) + 时间(淡色)
+            title = Text.from_markup(f"{emoji} [{color}]{name}[/{color}] [dim]{time_str}[/dim]")
+        elif msg.sender == "system":
+            # 系统消息：简单显示
+            return Static(
+                Text.from_markup(f"[dim yellow]* {msg.content}[/dim yellow]"),
+                classes="message message-system"
+            )
+        else:
+            # Agent消息
+            emoji = self.employee.emoji
+            name = self.employee.display_name or self.employee.name
+            css_class = "message-agent"
+            color = "green"
+            # 标题：emoji + 名字(彩色) + 时间(淡色)
+            title = Text.from_markup(f"{emoji} [{color}]{name}[/{color}] [dim]{time_str}[/dim]")
+        
+        # 使用 Panel 创建带边框的气泡效果，内部使用 Markdown
+        content_md = Markdown(msg.content or "")
+        
+        # 创建 Panel，使用标题栏显示头像和时间
+        panel = Panel(
+            content_md,
+            title=title,
+            title_align="left",
+            border_style=color,
+            padding=(0, 1),
+        )
+        
+        return Static(panel, classes=f"message {css_class}")
     
     def _refresh_messages(self):
         """刷新消息显示"""
         try:
             container = self.query_one("#messages-container", ScrollableContainer)
             
-            # 保留思考指示器的状态
-            has_thinking_indicator = False
-            for child in list(container.children):
-                if hasattr(child, 'is_thinking_indicator'):
-                    has_thinking_indicator = True
-                    break
+            # 全量刷新时清除 streaming widget 引用（widget 会随 children 一起被移除）
+            self._streaming_widget = None
             
-            # 移除旧的消息组件
+            # 移除所有子组件
             for widget in list(container.children):
                 widget.remove()
             
@@ -369,8 +427,8 @@ class ChatScreen(Screen):
                 widget = self._create_message_widget(msg)
                 container.mount(widget)
             
-            # 如果正在思考且没有指示器，添加它
-            if self.is_thinking and not has_thinking_indicator:
+            # 如果正在思考，重新添加思考指示器
+            if self.is_thinking:
                 self._add_thinking_indicator()
             
             # 滚动到底部
