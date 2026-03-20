@@ -5,16 +5,14 @@
 
 from textual.app import App, ComposeResult
 from textual.screen import ModalScreen
-from textual.widgets import Header, Footer, Static, Input, Button
+from textual.widgets import Footer, Static, Button
 from textual.containers import Vertical, Grid, Horizontal
-from textual.reactive import reactive
-from textual import work
 from rich.text import Text
 
 from .models import EmployeeStore, Employee
 from .chat_screen import ChatScreen
 from .agent_management_screen import AgentManagementScreen
-from .message_manager import get_message_manager, MessageManager
+from .message_manager import get_message_manager
 from .logger import logger
 from .utils import pad_to_width
 

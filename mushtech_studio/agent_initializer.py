@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import time
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
@@ -14,6 +15,24 @@ from .config_manager import get_config_manager, StudioConfig
 from .logger import logger
 from .models import Employee
 from .templates.base import AgentConfig
+
+# 预定义的 Agent ID 列表
+SLIDEV_AGENT_IDS = frozenset([
+    "ppt-director",
+    "ppt-content-architect",
+    "ppt-visual-designer",
+    "ppt-code-specialist",
+    "ppt-integrator",
+    "ppt-image-artist"
+])
+
+REMOTION_AGENT_IDS = frozenset([
+    "video-director",
+    "video-script-writer",
+    "remotion-core-dev",
+    "remotion-media-dev",
+    "video-quality-analyst"
+])
 
 
 class HookClient:
@@ -86,15 +105,155 @@ class HookClient:
         return self.post_message(endpoint, token, payload)
 
 
+def setup_slidev_skills_for_agent(
+    agent_id: str,
+    workspace: str,
+) -> Tuple[bool, str]:
+    """
+    为Agent部署Slidev skills（离线预置）
+    
+    Skills预置在 data/agents-docs/slidev_ppt/{agent_id}/skills/ 目录下
+    
+    Args:
+        agent_id: Agent ID
+        workspace: 工作空间路径
+    
+    Returns:
+        (success, message)
+    """
+    from .templates.slidev_ppt import SlidevPPTTemplate
+    
+    template = SlidevPPTTemplate()
+    return template.deploy_skills_for_agent(agent_id, workspace)
+
+
+def setup_slidev_skills_for_team(workspace_map: Dict[str, str]) -> Dict[str, Tuple[bool, str]]:
+    """
+    为整个PPT团队部署skills
+    
+    Args:
+        workspace_map: Agent ID到工作空间的映射
+        
+    Returns:
+        各Agent的部署结果
+    """
+    from .templates.slidev_ppt import SlidevPPTTemplate
+    
+    template = SlidevPPTTemplate()
+    return template.deploy_all_skills(workspace_map)
+
+
+def setup_remotion_skills_for_agent(
+    agent_id: str,
+    workspace: str,
+) -> Tuple[bool, str]:
+    """
+    为Agent部署Remotion skills（离线预置）
+    
+    Skills预置在 data/agents-docs/remotion_video/{agent_id}/skills/ 目录下
+    
+    Args:
+        agent_id: Agent ID
+        workspace: 工作空间路径
+    
+    Returns:
+        (success, message)
+    """
+    from .templates.remotion_video import RemotionVideoTemplate
+    
+    template = RemotionVideoTemplate()
+    return template.deploy_skills_for_agent(agent_id, workspace)
+
+
+def setup_remotion_skills_for_team(workspace_map: Dict[str, str]) -> Dict[str, Tuple[bool, str]]:
+    """
+    为整个Remotion视频团队部署skills
+    
+    Args:
+        workspace_map: Agent ID到工作空间的映射
+        
+    Returns:
+        各Agent的部署结果
+    """
+    from .templates.remotion_video import RemotionVideoTemplate
+    
+    template = RemotionVideoTemplate()
+    return template.deploy_all_skills(workspace_map)
+
+
 class AgentInitializer:
-    """通过 OpenClaw Hook 初始化 agent 会话与默认文档。"""
+    """通过文件拷贝初始化 agent 默认文档。"""
+
+    # 模板ID到agents-docs目录的映射
+    TEMPLATE_MAPPING = {
+        "slidev_ppt": "slidev_ppt",
+        "remotion_video": "remotion_video", 
+        "software_engineering": "software_engineering",
+        "stock_analysis": "stock_analysis",
+    }
 
     def __init__(self):
         self.studio_config = get_config_manager().get_config()
         self.cmd = get_cmd_executor()
         self.hook_client = HookClient(self.studio_config)
         self.prompts_dir = Path(__file__).parent / "templates" / "prompts"
+        self.agents_docs_dir = Path(__file__).parent.parent / "data" / "agents-docs"
         self._shared_user_profile = self._load_shared_user_profile()
+    
+    def _copy_agent_docs(self, agent_id: str, template_id: str, workspace: str) -> Tuple[bool, str]:
+        """
+        拷贝agent的markdown文档到工作空间
+        
+        Args:
+            agent_id: Agent ID
+            template_id: 模板ID (如 slidev_ppt)
+            workspace: 工作空间路径
+            
+        Returns:
+            (success, message)
+        """
+        # 获取模板对应的docs目录名
+        docs_template = self.TEMPLATE_MAPPING.get(template_id, template_id)
+        source_dir = self.agents_docs_dir / docs_template / agent_id
+        
+        if not source_dir.exists():
+            # 尝试查找其他模板目录
+            found = False
+            for tmpl_dir in self.agents_docs_dir.iterdir():
+                if tmpl_dir.is_dir():
+                    alt_source = tmpl_dir / agent_id
+                    if alt_source.exists():
+                        source_dir = alt_source
+                        found = True
+                        break
+            if not found:
+                return False, f"Agent文档目录不存在: {source_dir}"
+        
+        workspace_path = Path(workspace).expanduser()
+        workspace_path.mkdir(parents=True, exist_ok=True)
+        
+        required_files = ["SOUL.md", "AGENTS.md", "IDENTITY.md", "USER.md"]
+        copied_count = 0
+        errors = []
+        
+        for filename in required_files:
+            source_file = source_dir / filename
+            if source_file.exists():
+                try:
+                    dest_file = workspace_path / filename
+                    shutil.copy2(source_file, dest_file)
+                    copied_count += 1
+                except Exception as e:
+                    errors.append(f"{filename}: {e}")
+            else:
+                errors.append(f"{filename}: 文件不存在")
+        
+        if copied_count == len(required_files):
+            return True, f"已拷贝 {copied_count} 个文档到 {workspace_path}"
+        elif copied_count > 0:
+            return True, f"已拷贝 {copied_count}/{len(required_files)} 个文档，警告: {'; '.join(errors)}"
+        else:
+            return False, f"拷贝失败: {'; '.join(errors)}"
 
     def initialize_agent(
         self,
@@ -102,18 +261,68 @@ class AgentInitializer:
         *,
         workspace: str,
         reset_after_bootstrap: bool = True,
+        setup_skills: bool = True,
+        template_id: str = "",
     ) -> Tuple[bool, str]:
-        message = self.build_bootstrap_message_for_agent(agent)
-        return self._bootstrap_and_optionally_reset(
-            agent_id=agent.id,
-            session_key=f"agent:{agent.id}:main",
-            workspace=workspace,
-            identity_name=agent.name,
-            identity_emoji=agent.emoji,
-            message=message,
-            reset_after_bootstrap=reset_after_bootstrap,
-            name=f"MushTech Studio Bootstrap - {agent.display_name}",
+        # 如果是PPT团队成员，自动部署Slidev skills（离线）
+        if setup_skills and agent.id in SLIDEV_AGENT_IDS:
+            logger.info(f"Deploying Slidev skills for {agent.id}...")
+            skills_ok, skills_msg = setup_slidev_skills_for_agent(
+                agent_id=agent.id,
+                workspace=workspace,
+            )
+            if skills_ok:
+                logger.info(f"Skills deployed: {skills_msg}")
+            else:
+                logger.warning(f"Skills deployment failed: {skills_msg}")
+        
+        # 如果是Remotion视频工作室成员，自动部署Remotion skills（离线）
+        if setup_skills and agent.id in REMOTION_AGENT_IDS:
+            logger.info(f"Deploying Remotion skills for {agent.id}...")
+            skills_ok, skills_msg = setup_remotion_skills_for_agent(
+                agent_id=agent.id,
+                workspace=workspace,
+            )
+            if skills_ok:
+                logger.info(f"Skills deployed: {skills_msg}")
+            else:
+                logger.warning(f"Skills deployment failed: {skills_msg}")
+        
+        # 拷贝agent文档（新的文件拷贝方式）
+        logger.info(f"Copying agent docs for {agent.id}...")
+        docs_ok, docs_msg = self._copy_agent_docs(agent.id, template_id, workspace)
+        if docs_ok:
+            logger.info(f"Agent docs copied: {docs_msg}")
+        else:
+            logger.warning(f"Agent docs copy failed: {docs_msg}")
+            # 如果拷贝失败，回退到旧的消息方式
+            logger.info(f"Falling back to hook message for {agent.id}")
+            message = self.build_bootstrap_message_for_agent(agent)
+            return self._bootstrap_and_optionally_reset(
+                agent_id=agent.id,
+                session_key=f"agent:{agent.id}:main",
+                workspace=workspace,
+                identity_name=agent.name,
+                identity_emoji=agent.emoji,
+                message=message,
+                reset_after_bootstrap=reset_after_bootstrap,
+                name=f"MushTech Studio Bootstrap - {agent.display_name}",
+            )
+        
+        # 设置身份并可选重置会话
+        sync_ok, sync_reason = self.cmd.agents_set_identity(
+            agent.id,
+            name=agent.name,
+            emoji=agent.emoji,
         )
+        if not sync_ok:
+            return False, sync_reason
+        
+        if reset_after_bootstrap:
+            time.sleep(1.0)
+            return self.reset_session(agent.id, f"agent:{agent.id}:main")
+        
+        return True, docs_msg
 
     def initialize_employee(self, employee: Employee, *, reset_after_bootstrap: bool = True) -> Tuple[bool, str]:
         message = self.build_bootstrap_message_for_employee(employee)

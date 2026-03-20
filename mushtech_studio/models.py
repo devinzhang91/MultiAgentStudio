@@ -250,24 +250,6 @@ class EmployeeStore:
                 setattr(self.multi_agent_config, key, value)
         self.save()
     
-    def get_main_brain(self) -> Optional[Employee]:
-        """获取主脑员工"""
-        for emp in self.employees.values():
-            if emp.is_main_brain:
-                return emp
-        return None
-    
-    def get_specialists(self) -> List[Employee]:
-        """获取所有专才员工"""
-        return [emp for emp in self.employees.values() if not emp.is_main_brain]
-    
-    def get_by_agent_id(self, agent_id: str) -> Optional[Employee]:
-        """通过 agent_id 查找员工"""
-        for emp in self.employees.values():
-            if emp.agent_id == agent_id:
-                return emp
-        return None
-    
 
 # 工具函数
 def create_employee_from_agent_config(

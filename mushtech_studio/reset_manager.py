@@ -100,6 +100,13 @@ class ResetManager:
             deleted_count = self._delete_message_history()
             logger.info(f"[ResetManager] 已删除 {deleted_count} 个聊天记录文件")
             
+            # 7.5 设置 OpenClaw 默认超时时间为 1800 秒（30分钟）
+            success, message = self._set_default_timeout()
+            if not success:
+                logger.warning(f"[ResetManager] 设置默认超时时间失败: {message}")
+            else:
+                logger.info(f"[ResetManager] {message}")
+            
             # 8. 执行gateway restart
             success, message = self._restart_gateway()
             if not success:
@@ -557,12 +564,16 @@ class ResetManager:
                 self.studio_config.base_workspace,
                 self.studio_config.architecture,
             )
+            
+            # 获取当前工作室类型作为template_id
+            template_id = self.studio_config.studio_type
 
             for agent in template.get_agents():
                 success, reason = self.initializer.initialize_agent(
                     agent,
                     workspace=workspace_map.get(agent.id, f"{self.studio_config.base_workspace}/workspace/{agent.id}"),
                     reset_after_bootstrap=True,
+                    template_id=template_id,
                 )
                 if success:
                     refreshed_count += 1
@@ -573,6 +584,19 @@ class ResetManager:
         except Exception as e:
             logger.error(f"[ResetManager] 初始化默认 Markdown 失败: {e}")
             return 0, [str(e)]
+    
+    def _set_default_timeout(self) -> Tuple[bool, str]:
+        """
+        设置 OpenClaw 默认超时时间为 1800 秒（30分钟）
+        
+        Returns:
+            Tuple[bool, str]: (是否成功, 消息)
+        """
+        try:
+            return self.cmd.config_set("agents.defaults.timeoutSeconds", 1800)
+        except Exception as e:
+            logger.error(f"[ResetManager] 设置默认超时时间失败: {e}")
+            return False, str(e)
     
     def _restart_gateway(self) -> Tuple[bool, str]:
         """

@@ -205,6 +205,27 @@ class StudioTemplate(ABC):
         }
 
 
+# 模板类映射（延迟导入以避免循环依赖）
+_TEMPLATE_REGISTRY = {
+    "software_engineering": (".software_engineering", "SoftwareEngineeringTemplate"),
+    "remotion_video": (".remotion_video", "RemotionVideoTemplate"),
+    "stock_analysis": (".stock_analysis", "StockAnalysisTemplate"),
+    "slidev_ppt": (".slidev_ppt", "SlidevPPTTemplate"),
+}
+
+
+def _get_template_class(studio_type: str):
+    """根据类型获取模板类（内部辅助函数）"""
+    import importlib
+    
+    module_path, class_name = _TEMPLATE_REGISTRY.get(
+        studio_type, 
+        _TEMPLATE_REGISTRY["software_engineering"]
+    )
+    module = importlib.import_module(module_path, __package__)
+    return getattr(module, class_name)
+
+
 def get_template(studio_type: str) -> StudioTemplate:
     """
     根据类型获取模板实例
@@ -215,17 +236,7 @@ def get_template(studio_type: str) -> StudioTemplate:
     Returns:
         StudioTemplate: 模板实例
     """
-    from .software_engineering import SoftwareEngineeringTemplate
-    from .remotion_video import RemotionVideoTemplate
-    from .stock_analysis import StockAnalysisTemplate
-    
-    templates = {
-        "software_engineering": SoftwareEngineeringTemplate,
-        "remotion_video": RemotionVideoTemplate,
-        "stock_analysis": StockAnalysisTemplate,
-    }
-    
-    template_class = templates.get(studio_type, SoftwareEngineeringTemplate)
+    template_class = _get_template_class(studio_type)
     return template_class()
 
 
@@ -236,31 +247,15 @@ def list_templates() -> List[Dict[str, str]]:
     Returns:
         List[Dict]: 模板信息列表
     """
-    from .software_engineering import SoftwareEngineeringTemplate
-    from .remotion_video import RemotionVideoTemplate
-    from .stock_analysis import StockAnalysisTemplate
-    
-    templates = [
-        {
-            "id": "software_engineering",
-            "name": SoftwareEngineeringTemplate.name,
-            "description": SoftwareEngineeringTemplate.description,
-            "default_architecture": SoftwareEngineeringTemplate.default_architecture,
-        },
-        {
-            "id": "remotion_video",
-            "name": RemotionVideoTemplate.name,
-            "description": RemotionVideoTemplate.description,
-            "default_architecture": RemotionVideoTemplate.default_architecture,
-        },
-        {
-            "id": "stock_analysis",
-            "name": StockAnalysisTemplate.name,
-            "description": StockAnalysisTemplate.description,
-            "default_architecture": StockAnalysisTemplate.default_architecture,
-        },
-    ]
-    
+    templates = []
+    for studio_type in _TEMPLATE_REGISTRY.keys():
+        template_class = _get_template_class(studio_type)
+        templates.append({
+            "id": studio_type,
+            "name": template_class.name,
+            "description": template_class.description,
+            "default_architecture": template_class.default_architecture,
+        })
     return templates
 
 

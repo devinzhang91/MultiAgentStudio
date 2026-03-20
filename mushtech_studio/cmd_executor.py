@@ -191,12 +191,33 @@ class MushTechCmdExecutor:
 
         args = ["agents", "bind", "--agent", agent_id, "--bind", bind_value]
         success, output = self._execute(args)
-
+        
         if success:
-            logger.info(f"[CMD] Agent '{agent_id}' bound to {bind_value}")
-            return True, output or f"已将 '{agent_id}' 绑定到 {bind_value}"
-        logger.error(f"[CMD] Failed to bind agent '{agent_id}': {output}")
-        return False, output
+            logger.info(f"[CMD] Agent '{agent_id}' bound to '{bind_value}'")
+            return True, output or f"已绑定 '{agent_id}' 到 '{bind_value}'"
+        else:
+            logger.error(f"[CMD] Failed to bind agent '{agent_id}': {output}")
+            return False, output
+    
+    def config_set(self, key: str, value: Any) -> Tuple[bool, str]:
+        """设置 OpenClaw 配置项
+        
+        Args:
+            key: 配置键，支持点号路径如 'agents.defaults.timeoutSeconds'
+            value: 配置值
+            
+        Returns:
+            Tuple[bool, str]: (是否成功, 消息)
+        """
+        args = ["config", "set", key, str(value)]
+        success, output = self._execute(args)
+        
+        if success:
+            logger.info(f"[CMD] Config set: {key} = {value}")
+            return True, output or f"已设置 {key} = {value}"
+        else:
+            logger.error(f"[CMD] Failed to set config '{key}': {output}")
+            return False, output
 
 
 # 全局执行器实例

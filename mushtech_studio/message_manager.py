@@ -243,10 +243,12 @@ class MessageManager:
         # 连接状态
         self.connection_status: Dict[str, str] = {}
         
-        # UI 回调
-        self.on_message_received: Optional[Callable[[str, str, str], None]] = None
+        # UI 回调 - 支持多订阅者（解决"串台"问题）
+        self._message_callbacks: Dict[str, Callable[[str, str, str], None]] = {}
         self.on_unread_changed: Optional[Callable[[str, int], None]] = None
         self.on_status_changed: Optional[Callable[[str, str], None]] = None
+        # 保留向后兼容
+        self.on_message_received: Optional[Callable[[str, str, str], None]] = None
         
         # 本地存储目录
         self.data_dir = Path(__file__).parent.parent / "data"
@@ -376,6 +378,85 @@ class MessageManager:
             logger.error(f"Failed to sync from OpenClaw for {emp_id}: {e}")
             return 0
     
+    def sync_from_openclaw_incremental(self, emp_id: str) -> int:
+        """从 OpenClaw 增量同步新消息（智能合并）
+        
+        在对话框保持打开期间定期调用，只同步 OpenClaw 中有但本地没有的消息。
+        保留本地通过 WebSocket 接收的消息，避免重复。
+        
+        Returns:
+            新增的消息数量
+        """
+        emp = self.store.employees.get(emp_id)
+        if not emp or not emp.agent_id:
+            logger.debug(f"Incremental sync skipped for {emp_id}: no agent_id")
+            return 0
+        
+        try:
+            logger.debug(f"Starting incremental sync for {emp_id} (agent: {emp.agent_id})")
+            
+            # 从 OpenClaw 读取
+            reader = OpenClawSessionReader(emp.agent_id)
+            openclaw_messages = reader.read_messages(session_key="main", limit=200)
+            
+            if not openclaw_messages:
+                logger.debug(f"Incremental sync for {emp_id}: OpenClaw has no messages")
+                return 0
+            
+            conv = self.get_conversation(emp_id)
+            local_count_before = len(conv.messages)
+            
+            logger.debug(f"Incremental sync for {emp_id}: OpenClaw has {len(openclaw_messages)}, local has {local_count_before}")
+            
+            # 创建本地消息的唯一标识集合（使用 content 前80字符的哈希）
+            # 不使用 timestamp 因为 WebSocket 和 OpenClaw 的时间戳格式可能不同
+            local_content_hashes = set()
+            for m in conv.messages:
+                # 标准化内容：去除首尾空格，取前80字符
+                normalized = m.content.strip()[:80]
+                content_hash = hash(f"{m.sender}:{normalized}")
+                local_content_hashes.add(content_hash)
+            
+            # 找出 OpenClaw 中有但本地没有的消息
+            new_messages = []
+            for msg in openclaw_messages:
+                normalized = msg.content.strip()[:80]
+                content_hash = hash(f"{msg.sender}:{normalized}")
+                if content_hash not in local_content_hashes:
+                    new_messages.append(msg)
+                    local_content_hashes.add(content_hash)  # 避免重复添加
+            
+            if not new_messages:
+                logger.debug(f"Incremental sync for {emp_id}: no new messages to add")
+                return 0
+            
+            logger.info(f"Incremental sync for {emp_id}: found {len(new_messages)} new messages to add")
+            
+            # 合并：保留本地消息，追加新消息
+            # 按时间戳排序
+            all_messages = conv.messages + new_messages
+            all_messages.sort(key=lambda m: m.timestamp)
+            
+            # 限制数量（保留最新的200条）
+            if len(all_messages) > 200:
+                all_messages = all_messages[-200:]
+            
+            # 更新内存
+            conv.replace_messages(all_messages)
+            
+            # 增量追加到本地文件（而不是覆盖）
+            for msg in new_messages:
+                self._save_message_local(emp_id, msg)
+            
+            logger.info(f"Incremental sync for {emp_id}: {len(new_messages)} new messages added (OpenClaw: {len(openclaw_messages)}, local was: {local_count_before})")
+            return len(new_messages)
+            
+        except Exception as e:
+            logger.error(f"Failed to incrementally sync from OpenClaw for {emp_id}: {e}")
+            import traceback
+            logger.debug(f"Incremental sync error traceback: {traceback.format_exc()}")
+            return 0
+    
     def get_conversation(self, emp_id: str) -> Conversation:
         """获取或创建对话"""
         if emp_id not in self.conversations:
@@ -488,13 +569,32 @@ class MessageManager:
             logger.error(f"Failed to send message to {emp_id}: {e}")
             return None
     
+    def register_message_callback(self, emp_id: str, callback: Callable[[str, str, str], None]):
+        """注册指定员工的消息回调（解决多对话框"串台"问题）"""
+        self._message_callbacks[emp_id] = callback
+        logger.debug(f"Registered message callback for {emp_id}")
+    
+    def unregister_message_callback(self, emp_id: str):
+        """注销指定员工的消息回调"""
+        if emp_id in self._message_callbacks:
+            del self._message_callbacks[emp_id]
+            logger.debug(f"Unregistered message callback for {emp_id}")
+    
     def _handle_message(self, emp_id: str, sender: str, content: str):
         """处理收到的消息（WebSocket 回调）"""
         logger.info(f"Message from {emp_id}/{sender}: {content[:50]}...")
         
+        # 先处理流式/思考状态通知（不保存到消息历史）
         if sender in ("__thinking__", "__stream__"):
-            # 流式/思考状态通知，直接透传给 UI，不保存到消息历史
-            if self.on_message_received:
+            # 优先使用多订阅者回调（精确路由）
+            callback = self._message_callbacks.get(emp_id)
+            if callback:
+                try:
+                    callback(emp_id, sender, content)
+                except Exception as e:
+                    logger.error(f"Error in callback for {emp_id}: {e}")
+            # 向后兼容
+            elif self.on_message_received:
                 try:
                     self.on_message_received(emp_id, sender, content)
                 except Exception as e:
@@ -509,8 +609,15 @@ class MessageManager:
         # 追加到本地文件
         self._save_message_local(emp_id, msg)
         
-        # 通知 UI
-        if self.on_message_received:
+        # 通知 UI - 优先使用多订阅者回调（精确路由到对应对话框）
+        callback = self._message_callbacks.get(emp_id)
+        if callback:
+            try:
+                callback(emp_id, sender, content)
+            except Exception as e:
+                logger.error(f"Error in callback for {emp_id}: {e}")
+        # 向后兼容
+        elif self.on_message_received:
             try:
                 self.on_message_received(emp_id, sender, content)
             except Exception as e:

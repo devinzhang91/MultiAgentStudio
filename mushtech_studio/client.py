@@ -518,6 +518,18 @@ class MushTechClient:
         state = payload.get("state")
         logger.debug(f"[{self.employee.id}] Chat event, state={state}")
         
+        # 首先进行 session_key 验证（所有消息都需要验证，防止"串台"）
+        session_key = str(payload.get("sessionKey", ""))
+        raw_session_key = self.employee.session_key or self.employee.config.get("session_key")
+        if not raw_session_key and self.employee.agent_id:
+            raw_session_key = f"agent:{self.employee.agent_id}:main"
+        expected = self._normalize_chat_session_key(raw_session_key or self.employee.name.lower())
+        
+        # session_key 不匹配的消息直接丢弃（防止消息串台）
+        if session_key and expected and session_key != expected:
+            logger.debug(f"[{self.employee.id}] Session key mismatch: {session_key} != {expected}, dropping message")
+            return
+        
         # 只处理 final 状态的消息，避免流式返回导致重复
         if state and state != "final":
             # 尝试提取流式文本内容
@@ -528,15 +540,6 @@ class MushTechClient:
             elif self.on_message:
                 # 没有文本，只是思考状态通知
                 self.on_message("__thinking__", "thinking")
-            return
-
-        session_key = str(payload.get("sessionKey", ""))
-        raw_session_key = self.employee.session_key or self.employee.config.get("session_key")
-        if not raw_session_key and self.employee.agent_id:
-            raw_session_key = f"agent:{self.employee.agent_id}:main"
-        expected = self._normalize_chat_session_key(raw_session_key or self.employee.name.lower())
-        if session_key and expected and session_key != expected:
-            logger.debug(f"[{self.employee.id}] Session key mismatch: {session_key} != {expected}")
             return
 
         task_id = ""
@@ -552,16 +555,17 @@ class MushTechClient:
         if self.on_message and text:
             self.on_message(self.employee.name, text)
 
+        # 精确匹配 task_id - 移除危险的回退逻辑，防止消息串台
         if task_id and task_id in self._task_waiters:
             fut = self._task_waiters.get(task_id)
             if fut and not fut.done():
                 fut.set_result(text)
-            return
-
-        if len(self._task_waiters) == 1:
-            _, fut = next(iter(self._task_waiters.items()))
-            if fut and not fut.done():
-                fut.set_result(text)
+                logger.debug(f"[{self.employee.id}] Message routed to waiter for task {task_id[:8]}")
+        elif self._task_waiters:
+            # task_id 不匹配，但有等待器 - 记录警告，不分配（防止串台）
+            logger.warning(f"[{self.employee.id}] Task ID mismatch: received={task_id[:8] if task_id else 'none'}, "
+                          f"waiters={list(self._task_waiters.keys())[:3]}, message dropped from routing")
+            # 注意：不自动分配给任何 waiter，等待超时后由调用方重试
 
     def _extract_text(self, message: Any) -> str:
         """从消息中提取文本"""
