@@ -24,4 +24,7 @@ Thumbs.db
 # Project data（包含敏感信息，不提交）
 data/
 !data/.gitkeep
+!data/agents-docs/
+!data/agents-docs/**/
+!data/agents-docs/**/*
 *.log
